@@ -2,12 +2,43 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from typing import List
 
 import numpy as np
 
 from app.config import AppConfig
+
+
+def _register_nvidia_dll_dirs() -> None:
+    """Add nvidia package DLL dirs to the search path (Windows only).
+
+    Pip-installed nvidia-cublas-cu12 (and similar) place DLLs under
+    site-packages/nvidia/<lib>/bin/ which Python doesn't search by default.
+    We prepend to PATH so that both Python and native C extensions (ctranslate2)
+    can find them.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import nvidia
+        nvidia_root = os.path.dirname(nvidia.__path__[0])
+        nvidia_pkg = os.path.join(nvidia_root, "nvidia")
+        dirs_to_add = []
+        for pkg in os.listdir(nvidia_pkg):
+            bin_dir = os.path.join(nvidia_pkg, pkg, "bin")
+            if os.path.isdir(bin_dir):
+                os.add_dll_directory(bin_dir)
+                dirs_to_add.append(bin_dir)
+        if dirs_to_add:
+            os.environ["PATH"] = os.pathsep.join(dirs_to_add) + os.pathsep + os.environ.get("PATH", "")
+    except (ImportError, OSError):
+        pass
+
+
+_register_nvidia_dll_dirs()
 
 
 @dataclass

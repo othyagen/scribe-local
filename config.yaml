@@ -6,7 +6,7 @@ audio:
   channels: 1
 
 vad:
-  speech_threshold_rms: 0.01
+  speech_threshold_rms: 0.0005
   short_silence_sec: 1.0
   long_silence_sec: 3.0
   chunk_duration_ms: 30

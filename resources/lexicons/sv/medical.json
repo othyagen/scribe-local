@@ -1,0 +1,12 @@
+{
+  "replacements": {
+    "paracetamol": "paracetamol",
+    "ibuprofen": "ibuprofen",
+    "blodtryck": "blodtryck",
+    "kolesterol": "kolesterol",
+    "diabetes": "diabetes",
+    "astma": "astma",
+    "allergi": "allergi",
+    "migrän": "migrän"
+  }
+}

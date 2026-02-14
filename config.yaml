@@ -1,0 +1,29 @@
+language: da  # da, sv, en
+
+audio:
+  device: null          # null = system default; integer = device index
+  sample_rate: 16000
+  channels: 1
+
+vad:
+  speech_threshold_rms: 0.01
+  short_silence_sec: 1.0
+  long_silence_sec: 3.0
+  chunk_duration_ms: 30
+  min_speech_sec: 0.3
+
+asr:
+  model: large-v3
+  device: auto          # auto, cuda, cpu
+  compute_type: float16 # float16 (GPU), int8 (CPU fallback)
+
+diarization:
+  enabled: true
+  backend: default      # default = single speaker (spk_0)
+
+normalization:
+  enabled: true
+  fuzzy_threshold: 0.92
+  lexicon_dir: resources/lexicons
+
+output_dir: outputs

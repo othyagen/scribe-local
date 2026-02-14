@@ -1,0 +1,6 @@
+{
+  "replacements": {
+    "pt": "patient",
+    "dept": "department"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "replacements": {
+    "paracetamol": "paracetamol",
+    "ibuprofen": "ibuprofen",
+    "acetaminophen": "acetaminophen",
+    "blood pressure": "blood pressure",
+    "cholesterol": "cholesterol",
+    "diabetes": "diabetes",
+    "asthma": "asthma",
+    "allergy": "allergy",
+    "migraine": "migraine",
+    "hypertension": "hypertension"
+  }
+}

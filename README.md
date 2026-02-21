@@ -194,14 +194,69 @@ Diarization output format:
 }
 ```
 
-#### Turn smoothing
+#### Diarization smoothing (reducing short speaker flips)
 
-Pyannote often produces very short speaker turns from backchannels ("mm", "ja") that cause noisy speaker flips. When `diarization.smoothing` is enabled (default: `true`), a post-processing step runs before segment relabeling:
+Pyannote often produces very short speaker turns from backchannels ("mm", "ja") that cause noisy speaker flips in the transcript. Smoothing cleans these up automatically.
 
-1. **Merge short turns** — Any turn shorter than `min_turn_sec` (default: 0.7s) is merged into the best adjacent turn. Same-speaker neighbors are preferred; otherwise the longer neighbor absorbs the short turn.
-2. **Fill same-speaker gaps** — If two consecutive turns from the same speaker are separated by a gap of `gap_merge_sec` or less (default: 0.3s), they are merged into one.
+Three settings control smoothing behavior:
 
-Smoothing only affects derived files (`diarization_<timestamp>.json` and downstream). RAW and normalized outputs are never modified.
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `diarization.smoothing` | `true` | Enable/disable smoothing entirely |
+| `diarization.min_turn_sec` | `0.7` | Turns shorter than this (in seconds) are merged into the nearest neighbor. Same-speaker neighbors are preferred; otherwise the longer neighbor absorbs the short turn. |
+| `diarization.gap_merge_sec` | `0.3` | If two consecutive turns from the same speaker are separated by a gap this small (in seconds) or less, they are merged into one continuous turn. |
+
+Smoothing only affects derived output files (`diarization_<timestamp>.json`, `diarized_segments_<timestamp>.json`, `diarized_<timestamp>.txt`, `tag_labeled_<timestamp>.txt`). RAW and normalized outputs are **never** modified.
+
+##### Presets
+
+**A) Clinic — typical 1:1 consult (balanced)**
+
+Good default for two-speaker sessions with normal turn-taking.
+
+```yaml
+diarization:
+  backend: pyannote
+  smoothing: true
+  min_turn_sec: 0.7
+  gap_merge_sec: 0.3
+```
+
+**B) Interrupt-heavy (many "mm/ja", quick overlaps)**
+
+More aggressive smoothing for sessions with frequent backchannels and overlapping speech.
+
+```yaml
+diarization:
+  backend: pyannote
+  smoothing: true
+  min_turn_sec: 1.2
+  gap_merge_sec: 0.5
+```
+
+**C) Noisy room / TV in background**
+
+Aggressive smoothing to reduce false speaker changes caused by background noise. Also consider lowering the VAD threshold and positioning the microphone closer to the speakers.
+
+```yaml
+diarization:
+  backend: pyannote
+  smoothing: true
+  min_turn_sec: 1.5
+  gap_merge_sec: 0.8
+```
+
+**D) Multi-speaker meeting (3+ people)**
+
+Less aggressive smoothing to preserve genuine short turns from different speakers.
+
+```yaml
+diarization:
+  backend: pyannote
+  smoothing: true
+  min_turn_sec: 0.4
+  gap_merge_sec: 0.2
+```
 
 #### Segment relabeling
 

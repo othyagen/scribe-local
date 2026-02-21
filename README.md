@@ -93,7 +93,8 @@ python -m app.main --output-dir my_session
 | `--auto-tags {none,alphabetical,index}` | Auto-assign speaker tags (default: `none`) |
 | `--set-tag SPK=TAG` | Set speaker tag, repeatable (e.g. `--set-tag spk_0=Host`) |
 | `--set-label SPK=LABEL` | Set speaker label, repeatable (e.g. `--set-label spk_0=Alice`) |
-| `--session TIMESTAMP` | Session timestamp for standalone tag operations |
+| `--merge SPK=TARGET` | Merge speaker into target, repeatable (e.g. `--merge spk_2=spk_0`) |
+| `--session TIMESTAMP` | Session timestamp for standalone tag/merge operations |
 
 ### Stopping
 
@@ -118,6 +119,7 @@ A session produces these files:
 | `diarization_<timestamp>.json` | JSON | Speaker turns (only when `diarization.backend: pyannote`) |
 | `diarized_segments_<timestamp>.json` | JSON array | Segment relabeling map (old → new speaker_id) |
 | `diarized_<timestamp>.txt` | Plain text | Transcript with diarized speaker_ids |
+| `speaker_merge_<timestamp>.json` | JSON | Speaker merge map (only when merges are applied) |
 | `speaker_tags_<timestamp>.json` | JSON | Speaker tag/label mapping |
 | `tag_labeled_<timestamp>.txt` | Plain text | Transcript with human-readable speaker tags |
 
@@ -258,9 +260,32 @@ diarization:
   gap_merge_sec: 0.2
 ```
 
+#### Speaker merge
+
+Pyannote sometimes splits the same person into multiple speaker IDs (e.g., `spk_0` and `spk_2` are actually the same person). Use `--merge` to combine them:
+
+```bash
+# Inspect the diarized output to identify split speakers
+# Then merge spk_2 into spk_0:
+python -m app.main --session 2026-02-22_14-30-00 --merge spk_2=spk_0
+
+# Multiple merges at once:
+python -m app.main --session 2026-02-22_14-30-00 \
+  --merge spk_2=spk_0 --merge spk_3=spk_1
+
+# Chain merges are resolved automatically:
+# spk_3→spk_2 and spk_2→spk_0 becomes spk_3→spk_0
+python -m app.main --session 2026-02-22_14-30-00 \
+  --merge spk_3=spk_2 --merge spk_2=spk_0
+```
+
+Merges are saved to `speaker_merge_<timestamp>.json` and applied to the diarization turns. After merging, adjacent turns from the now-same speaker are combined. Cycles are detected and rejected with a friendly error.
+
+Only derived outputs are affected. RAW and normalized outputs are **never** modified.
+
 #### Segment relabeling
 
-After diarization (and optional smoothing), each ASR segment is relabeled with the speaker who has the largest time overlap. This produces `diarized_segments_<timestamp>.json` (relabeling map) and `diarized_<timestamp>.txt` (transcript with new speaker_ids). RAW and normalized outputs are never modified.
+After diarization (and optional smoothing/merging), each ASR segment is relabeled with the speaker who has the largest time overlap. This produces `diarized_segments_<timestamp>.json` (relabeling map) and `diarized_<timestamp>.txt` (transcript with new speaker_ids). RAW and normalized outputs are never modified.
 
 ### Speaker Tagging
 
@@ -381,7 +406,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-112 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
+130 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

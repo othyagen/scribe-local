@@ -32,10 +32,14 @@ from app.config import (
 from app.audio import AudioCapture, list_devices
 from app.vad import VoiceActivityDetector, VadResult
 from app.diarization import (
+    apply_merge_map,
     create_diarizer,
     Diarizer,
+    load_merge_map,
     relabel_segments,
+    resolve_merge_chains,
     run_pyannote_diarization,
+    save_merge_map,
     smooth_turns,
 )
 from app.asr import ASREngine
@@ -355,6 +359,26 @@ def run(config: AppConfig, args: object = None) -> None:
                 json.dump(diar_data, f, ensure_ascii=False, indent=2)
             print(f"[{_ts()}] Smoothed: {original_count} → {len(diar_data['turns'])} turns.")
 
+        # Apply speaker merge map (if exists)
+        if diar_path:
+            diar_ts = diar_path.stem.removeprefix("diarization_")
+            merge_map = load_merge_map(config.output_dir, diar_ts)
+            if merge_map:
+                print(f"[{_ts()}] Applying speaker merge map...")
+                try:
+                    resolved = resolve_merge_chains(merge_map)
+                    with open(diar_path, encoding="utf-8") as f:
+                        diar_data = json.load(f)
+                    original_count = len(diar_data["turns"])
+                    diar_data["turns"] = apply_merge_map(
+                        diar_data["turns"], resolved
+                    )
+                    with open(diar_path, "w", encoding="utf-8") as f:
+                        json.dump(diar_data, f, ensure_ascii=False, indent=2)
+                    print(f"[{_ts()}] Merged: {original_count} → {len(diar_data['turns'])} turns.")
+                except ValueError as e:
+                    print(f"[{_ts()}] Speaker merge failed: {e}")
+
         # Relabel segments with diarization speaker_ids
         if diar_path:
             print(f"[{_ts()}] Relabeling segments...")
@@ -435,13 +459,52 @@ def main() -> None:
         print(f"Error: unsupported language '{config.language}'. Use da, sv, or en.")
         sys.exit(1)
 
-    # Standalone tag-only mode
+    # Standalone session mode (tagging + merge)
     if args.session:
         from app.tagging import (
             load_or_create_tags, apply_auto_tags, set_tag, set_label,
             save_tags, generate_tag_labeled_txt,
         )
         ts = args.session
+
+        # ── speaker merge ─────────────────────────────────────────
+        diar_path = Path(config.output_dir) / f"diarization_{ts}.json"
+        if args.merge:
+            merge_map = load_merge_map(config.output_dir, ts)
+            for entry in args.merge:
+                spk, target = entry.split("=", 1)
+                merge_map[spk] = target
+            try:
+                merge_map = resolve_merge_chains(merge_map)
+            except ValueError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+            merge_path = save_merge_map(merge_map, config.output_dir, ts)
+            print(f"Speaker merges   : {merge_path}")
+
+            if diar_path.exists():
+                with open(diar_path, encoding="utf-8") as f:
+                    diar_data = json.load(f)
+                diar_data["turns"] = apply_merge_map(
+                    diar_data["turns"], merge_map
+                )
+                with open(diar_path, "w", encoding="utf-8") as f:
+                    json.dump(diar_data, f, ensure_ascii=False, indent=2)
+
+                # Find normalized JSON to re-run relabeling
+                norm_files = list(Path(config.output_dir).glob(
+                    f"normalized_*_{ts.split('_')[0]}*.json"
+                ))
+                if not norm_files:
+                    norm_files = list(Path(config.output_dir).glob(
+                        "normalized_*.json"
+                    ))
+                if norm_files:
+                    relabel_segments(
+                        norm_files[-1], diar_path, config.output_dir
+                    )
+
+        # ── speaker tags ──────────────────────────────────────────
         tags = load_or_create_tags(config.output_dir, ts)
 
         for entry in args.set_tag:

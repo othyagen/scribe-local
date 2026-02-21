@@ -180,5 +180,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Set speaker label, repeatable (e.g. --set-label spk_0=Mette)")
     p.add_argument("--session", type=str, default=None,
                     metavar="TIMESTAMP",
-                    help="Session timestamp for standalone tag operations")
+                    help="Session timestamp for standalone tag/merge operations")
+
+    # Speaker merge
+    p.add_argument("--merge", action="append", default=[],
+                    metavar="SPK=TARGET",
+                    help="Merge speaker into target, repeatable (e.g. --merge spk_2=spk_0)")
     return p

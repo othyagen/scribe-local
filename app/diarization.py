@@ -210,6 +210,87 @@ def smooth_turns(
     return result
 
 
+# ── speaker merge ────────────────────────────────────────────────────
+
+def load_merge_map(output_dir: str, timestamp: str) -> dict[str, str]:
+    """Load speaker merge map, or return empty dict if none exists."""
+    path = Path(output_dir) / f"speaker_merge_{timestamp}.json"
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_merge_map(
+    merge_map: dict[str, str], output_dir: str, timestamp: str
+) -> Path:
+    """Write speaker merge map to ``speaker_merge_<timestamp>.json``."""
+    path = Path(output_dir) / f"speaker_merge_{timestamp}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(merge_map, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def resolve_merge_chains(merge_map: dict[str, str]) -> dict[str, str]:
+    """Resolve transitive merge chains to final roots.
+
+    Example: ``{spk_3: spk_2, spk_2: spk_0}`` → ``{spk_3: spk_0, spk_2: spk_0}``
+
+    Raises ``ValueError`` on cycles or self-references.
+    """
+    if not merge_map:
+        return {}
+
+    resolved: dict[str, str] = {}
+    for key in merge_map:
+        visited: list[str] = [key]
+        current = key
+        while current in merge_map:
+            current = merge_map[current]
+            if current in visited:
+                cycle = " → ".join(visited + [current])
+                raise ValueError(
+                    f"Cycle detected in speaker merge map: {cycle}"
+                )
+            visited.append(current)
+        resolved[key] = current
+
+    return resolved
+
+
+def apply_merge_map(
+    turns: list[dict], merge_map: dict[str, str]
+) -> list[dict]:
+    """Apply a resolved merge map to diarization turns.
+
+    Replaces speaker IDs, then merges adjacent turns with the same
+    speaker (touching or overlapping).  Returns a new list.
+    """
+    if not turns or not merge_map:
+        return [dict(t) for t in turns]
+
+    # Replace speaker IDs
+    result = []
+    for t in turns:
+        t_copy = dict(t)
+        t_copy["speaker"] = merge_map.get(t_copy["speaker"], t_copy["speaker"])
+        result.append(t_copy)
+
+    # Merge adjacent same-speaker turns
+    i = 0
+    while i < len(result) - 1:
+        curr = result[i]
+        nxt = result[i + 1]
+        if curr["speaker"] == nxt["speaker"]:
+            curr["end"] = max(curr["end"], nxt["end"])
+            result.pop(i + 1)
+        else:
+            i += 1
+
+    return result
+
+
 def relabel_segments(
     normalized_json_path: Path,
     diarization_json_path: Path,

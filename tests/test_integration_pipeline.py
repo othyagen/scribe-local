@@ -22,7 +22,13 @@ from app.config import AppConfig, NormalizationConfig, DiarizationConfig
 from app.commit import SegmentCommitter
 from app.normalize import Normalizer
 from app.io import OutputWriter
-from app.diarization import relabel_segments, run_pyannote_diarization, smooth_turns
+from app.diarization import (
+    apply_merge_map,
+    relabel_segments,
+    resolve_merge_chains,
+    run_pyannote_diarization,
+    smooth_turns,
+)
 from app.tagging import (
     load_or_create_tags,
     apply_auto_tags,
@@ -171,20 +177,29 @@ def test_full_pipeline(tmp_path, mock_pyannote_pipeline, monkeypatch):
     mock_pipeline.return_value = _make_fake_diarization([
         (0.0, 4.8, "SPEAKER_00"),
         (4.8, 5.2, "SPEAKER_00"),   # 0.4s backchannel — should be smoothed
-        (5.2, 10.0, "SPEAKER_01"),
+        (5.2, 8.0, "SPEAKER_01"),
+        (8.0, 10.0, "SPEAKER_02"),  # split speaker — will be merged into spk_1
     ])
 
     diar_path = run_pyannote_diarization(wav_path, output_dir)
 
     # ── 3b. Smoothing ─────────────────────────────────────────────
     diar_data = json.loads(diar_path.read_text(encoding="utf-8"))
-    assert len(diar_data["turns"]) == 3  # before smoothing
+    assert len(diar_data["turns"]) == 4  # before smoothing
     diar_data["turns"] = smooth_turns(
         diar_data["turns"],
         config.diarization.min_turn_sec,
         config.diarization.gap_merge_sec,
     )
-    assert len(diar_data["turns"]) == 2  # short turn merged into prev same-speaker
+    assert len(diar_data["turns"]) == 3  # short backchannel merged
+    diar_path.write_text(
+        json.dumps(diar_data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    # ── 3c. Speaker merge ─────────────────────────────────────────
+    merge_map = resolve_merge_chains({"spk_2": "spk_1"})
+    diar_data["turns"] = apply_merge_map(diar_data["turns"], merge_map)
+    assert len(diar_data["turns"]) == 2  # spk_2 merged into spk_1
     diar_path.write_text(
         json.dumps(diar_data, ensure_ascii=False, indent=2), encoding="utf-8"
     )

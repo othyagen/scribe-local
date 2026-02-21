@@ -136,6 +136,80 @@ def run_pyannote_diarization(wav_path: Path, output_dir: str) -> Path:
     return out
 
 
+def smooth_turns(
+    turns: list[dict],
+    min_turn_sec: float = 0.7,
+    gap_merge_sec: float = 0.3,
+) -> list[dict]:
+    """Smooth diarization turns to reduce short backchannel flips.
+
+    Pass 1 — merge short turns (< min_turn_sec) into the best neighbor:
+        * Same-speaker neighbor preferred (prev first, then next).
+        * Otherwise merge into the longer adjacent turn.
+    Pass 2 — fill tiny same-speaker gaps (<= gap_merge_sec).
+
+    Returns a new list; does not mutate the input.
+    """
+    if not turns:
+        return []
+
+    # Deep copy to avoid mutating input
+    result = [dict(t) for t in turns]
+
+    # ── Pass 1: merge short turns ─────────────────────────────────
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        while i < len(result):
+            t = result[i]
+            duration = t["end"] - t["start"]
+            if duration >= min_turn_sec:
+                i += 1
+                continue
+
+            prev = result[i - 1] if i > 0 else None
+            nxt = result[i + 1] if i < len(result) - 1 else None
+
+            if prev and prev["speaker"] == t["speaker"]:
+                prev["end"] = t["end"]
+            elif nxt and nxt["speaker"] == t["speaker"]:
+                nxt["start"] = t["start"]
+            elif prev and nxt:
+                prev_dur = prev["end"] - prev["start"]
+                nxt_dur = nxt["end"] - nxt["start"]
+                if prev_dur >= nxt_dur:
+                    prev["end"] = t["end"]
+                else:
+                    nxt["start"] = t["start"]
+            elif prev:
+                prev["end"] = t["end"]
+            elif nxt:
+                nxt["start"] = t["start"]
+            else:
+                # Single turn shorter than threshold — keep it
+                i += 1
+                continue
+
+            result.pop(i)
+            changed = True
+            # Don't increment i — re-check at same position
+
+    # ── Pass 2: fill same-speaker gaps ────────────────────────────
+    i = 0
+    while i < len(result) - 1:
+        curr = result[i]
+        nxt = result[i + 1]
+        gap = nxt["start"] - curr["end"]
+        if curr["speaker"] == nxt["speaker"] and gap <= gap_merge_sec:
+            curr["end"] = nxt["end"]
+            result.pop(i + 1)
+        else:
+            i += 1
+
+    return result
+
+
 def relabel_segments(
     normalized_json_path: Path,
     diarization_json_path: Path,

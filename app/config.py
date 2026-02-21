@@ -38,6 +38,9 @@ class AsrConfig:
 class DiarizationConfig:
     enabled: bool = True
     backend: str = "default"
+    smoothing: bool = True
+    min_turn_sec: float = 0.7
+    gap_merge_sec: float = 0.3
 
 
 @dataclass
@@ -107,6 +110,9 @@ def _build_diarization(d: dict) -> DiarizationConfig:
     return DiarizationConfig(
         enabled=d.get("enabled", True),
         backend=d.get("backend", "default"),
+        smoothing=d.get("smoothing", True),
+        min_turn_sec=d.get("min_turn_sec", 0.7),
+        gap_merge_sec=d.get("gap_merge_sec", 0.3),
     )
 
 

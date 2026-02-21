@@ -22,7 +22,7 @@ from app.config import AppConfig, NormalizationConfig, DiarizationConfig
 from app.commit import SegmentCommitter
 from app.normalize import Normalizer
 from app.io import OutputWriter
-from app.diarization import relabel_segments, run_pyannote_diarization
+from app.diarization import relabel_segments, run_pyannote_diarization, smooth_turns
 from app.tagging import (
     load_or_create_tags,
     apply_auto_tags,
@@ -169,11 +169,25 @@ def test_full_pipeline(tmp_path, mock_pyannote_pipeline, monkeypatch):
     mock_pipeline = MagicMock()
     mock_pyannote_pipeline.from_pretrained.return_value = mock_pipeline
     mock_pipeline.return_value = _make_fake_diarization([
-        (0.0, 5.0, "SPEAKER_00"),
-        (5.0, 10.0, "SPEAKER_01"),
+        (0.0, 4.8, "SPEAKER_00"),
+        (4.8, 5.2, "SPEAKER_00"),   # 0.4s backchannel — should be smoothed
+        (5.2, 10.0, "SPEAKER_01"),
     ])
 
     diar_path = run_pyannote_diarization(wav_path, output_dir)
+
+    # ── 3b. Smoothing ─────────────────────────────────────────────
+    diar_data = json.loads(diar_path.read_text(encoding="utf-8"))
+    assert len(diar_data["turns"]) == 3  # before smoothing
+    diar_data["turns"] = smooth_turns(
+        diar_data["turns"],
+        config.diarization.min_turn_sec,
+        config.diarization.gap_merge_sec,
+    )
+    assert len(diar_data["turns"]) == 2  # short turn merged into prev same-speaker
+    diar_path.write_text(
+        json.dumps(diar_data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     # ── 4. Relabel segments ───────────────────────────────────────
     diarized_json, diarized_txt = relabel_segments(

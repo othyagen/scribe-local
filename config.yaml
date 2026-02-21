@@ -20,6 +20,9 @@ asr:
 diarization:
   enabled: true
   backend: default       # default = single speaker (spk_0), pyannote = post-session diarization
+  smoothing: true        # merge short backchannel turns after pyannote diarization
+  min_turn_sec: 0.7      # merge turns shorter than this into neighbors
+  gap_merge_sec: 0.3     # fill same-speaker gaps smaller than this
 
 normalization:
   enabled: true

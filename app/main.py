@@ -36,6 +36,7 @@ from app.diarization import (
     Diarizer,
     relabel_segments,
     run_pyannote_diarization,
+    smooth_turns,
 )
 from app.asr import ASREngine
 from app.commit import SegmentCommitter, RawSegment, _fmt_ts
@@ -338,6 +339,21 @@ def run(config: AppConfig, args: object = None) -> None:
                 print(f"[{_ts()}] Diarization complete.")
             except Exception as e:
                 print(f"[{_ts()}] Diarization failed: {e}")
+
+        # Smooth diarization turns (reduce backchannel flips)
+        if diar_path and config.diarization.smoothing:
+            print(f"[{_ts()}] Smoothing diarization turns...")
+            with open(diar_path, encoding="utf-8") as f:
+                diar_data = json.load(f)
+            original_count = len(diar_data["turns"])
+            diar_data["turns"] = smooth_turns(
+                diar_data["turns"],
+                config.diarization.min_turn_sec,
+                config.diarization.gap_merge_sec,
+            )
+            with open(diar_path, "w", encoding="utf-8") as f:
+                json.dump(diar_data, f, ensure_ascii=False, indent=2)
+            print(f"[{_ts()}] Smoothed: {original_count} → {len(diar_data['turns'])} turns.")
 
         # Relabel segments with diarization speaker_ids
         if diar_path:

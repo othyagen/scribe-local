@@ -194,9 +194,18 @@ Diarization output format:
 }
 ```
 
+#### Turn smoothing
+
+Pyannote often produces very short speaker turns from backchannels ("mm", "ja") that cause noisy speaker flips. When `diarization.smoothing` is enabled (default: `true`), a post-processing step runs before segment relabeling:
+
+1. **Merge short turns** — Any turn shorter than `min_turn_sec` (default: 0.7s) is merged into the best adjacent turn. Same-speaker neighbors are preferred; otherwise the longer neighbor absorbs the short turn.
+2. **Fill same-speaker gaps** — If two consecutive turns from the same speaker are separated by a gap of `gap_merge_sec` or less (default: 0.3s), they are merged into one.
+
+Smoothing only affects derived files (`diarization_<timestamp>.json` and downstream). RAW and normalized outputs are never modified.
+
 #### Segment relabeling
 
-After diarization, each ASR segment is relabeled with the speaker who has the largest time overlap. This produces `diarized_segments_<timestamp>.json` (relabeling map) and `diarized_<timestamp>.txt` (transcript with new speaker_ids). RAW and normalized outputs are never modified.
+After diarization (and optional smoothing), each ASR segment is relabeled with the speaker who has the largest time overlap. This produces `diarized_segments_<timestamp>.json` (relabeling map) and `diarized_<timestamp>.txt` (transcript with new speaker_ids). RAW and normalized outputs are never modified.
 
 ### Speaker Tagging
 
@@ -297,6 +306,9 @@ asr:
 diarization:
   enabled: true
   backend: default    # default or pyannote
+  smoothing: true     # merge short backchannel turns after diarization
+  min_turn_sec: 0.7   # merge turns shorter than this into neighbors
+  gap_merge_sec: 0.3  # fill same-speaker gaps smaller than this
 
 normalization:
   enabled: true
@@ -314,7 +326,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-94 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
+112 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

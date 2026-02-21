@@ -101,7 +101,7 @@ Press **Ctrl+C** to stop recording. The pipeline will flush any remaining audio,
 
 All outputs are written to the configured `output_dir` (default: `outputs/`).
 
-A session produces five files:
+A session produces these files:
 
 | File | Format | Purpose |
 |------|--------|---------|
@@ -110,6 +110,8 @@ A session produces five files:
 | `normalized_<timestamp>_<model>.json` | JSON array | Normalized segments |
 | `normalized_<timestamp>_<model>.txt` | Plain text | Human-readable normalized transcript |
 | `changes_<timestamp>_<model>.json` | JSON array | Full audit log of every normalization change |
+| `audio_<timestamp>.wav` | WAV | Full session audio (16kHz, mono, 16-bit PCM) |
+| `diarization_<timestamp>.json` | JSON | Speaker turns (only when `diarization.backend: pyannote`) |
 
 ### RAW vs. NORMALIZED
 
@@ -159,7 +161,31 @@ Speaker diarization:
 - NEVER assigns roles (patient, clinician, etc.)
 - NEVER depends on language or content
 
-The default backend assigns all audio to `spk_0`. The architecture is pluggable — replace `DefaultDiarizer` with a real backend (e.g., pyannote.audio) by subclassing `Diarizer` and registering it in `create_diarizer()`.
+The default backend assigns all audio to `spk_0`.
+
+#### Pyannote backend
+
+Set `diarization.backend: pyannote` in `config.yaml` to enable post-session speaker diarization using [pyannote.audio](https://github.com/pyannote/pyannote-audio). This runs on the saved session WAV after recording ends and writes a separate `diarization_<timestamp>.json` file with speaker turns.
+
+Requirements:
+- Set the `HF_TOKEN` environment variable with a valid Hugging Face token
+- Accept the gated model licenses on Hugging Face:
+  - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+  - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+  - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+
+Diarization output format:
+
+```json
+{
+  "turns": [
+    {"start": 0.0, "end": 3.2, "speaker": "spk_0"},
+    {"start": 3.2, "end": 5.1, "speaker": "spk_1"}
+  ]
+}
+```
+
+Note: This does not yet update segment `speaker_id` fields in RAW/normalized outputs — it produces a standalone diarization file only.
 
 ### Lexicons
 
@@ -217,7 +243,7 @@ asr:
 
 diarization:
   enabled: true
-  backend: default
+  backend: default    # default or pyannote
 
 normalization:
   enabled: true
@@ -226,6 +252,16 @@ normalization:
 
 output_dir: outputs
 ```
+
+---
+
+## Testing
+
+```bash
+python -m pytest tests/ -v
+```
+
+53 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), and diarization (DefaultDiarizer, factory, pyannote pipeline with mocks).
 
 ---
 

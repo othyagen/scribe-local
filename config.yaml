@@ -19,7 +19,7 @@ asr:
 
 diarization:
   enabled: true
-  backend: default      # default = single speaker (spk_0)
+  backend: default      # default = single speaker (spk_0), pyannote = post-session diarization
 
 normalization:
   enabled: true

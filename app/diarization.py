@@ -96,7 +96,7 @@ def run_pyannote_diarization(wav_path: Path, output_dir: str) -> Path:
 
     pipeline = Pipeline.from_pretrained(
         "pyannote/speaker-diarization-3.1",
-        use_auth_token=hf_token,
+        token=hf_token,
     )
 
     diarization = pipeline(str(wav_path))

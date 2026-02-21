@@ -240,5 +240,5 @@ class TestRunPyannoteDiarization:
 
         mock_pyannote_pipeline.from_pretrained.assert_called_once_with(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token="my-secret-token",
+            token="my-secret-token",
         )

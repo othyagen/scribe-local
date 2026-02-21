@@ -30,7 +30,7 @@ from app.config import (
 )
 from app.audio import AudioCapture, list_devices
 from app.vad import VoiceActivityDetector, VadResult
-from app.diarization import create_diarizer, Diarizer
+from app.diarization import create_diarizer, Diarizer, run_pyannote_diarization
 from app.asr import ASREngine
 from app.commit import SegmentCommitter, RawSegment, _fmt_ts
 from app.normalize import Normalizer
@@ -319,6 +319,18 @@ def run(config: AppConfig) -> None:
         # Write session WAV
         wav_path = _write_session_wav(session_audio, sample_rate, config.output_dir)
 
+        # Post-session pyannote diarization
+        diar_path = None
+        if wav_path and config.diarization.backend == "pyannote":
+            print(f"[{_ts()}] Running pyannote diarization...")
+            try:
+                diar_path = run_pyannote_diarization(
+                    wav_path, config.output_dir
+                )
+                print(f"[{_ts()}] Diarization complete.")
+            except Exception as e:
+                print(f"[{_ts()}] Diarization failed: {e}")
+
         print("-" * 60)
         print(f"Segments committed : {committer.seg_count}")
         print(f"RAW output         : {writer.raw_json_path}")
@@ -326,6 +338,8 @@ def run(config: AppConfig) -> None:
         print(f"Change log         : {writer.changes_json_path}")
         if wav_path:
             print(f"Session audio      : {wav_path}")
+        if diar_path:
+            print(f"Diarization        : {diar_path}")
         print("Session ended.")
 
 

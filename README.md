@@ -314,7 +314,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-93 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), segment relabeling (overlap assignment, output formats), and speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation).
+94 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

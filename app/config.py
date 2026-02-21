@@ -161,4 +161,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Long silence / paragraph break in seconds (overrides config)")
     p.add_argument("--list-audio-devices", action="store_true",
                     help="List available audio input devices and exit")
+
+    # Speaker tagging
+    p.add_argument("--auto-tags", choices=["none", "alphabetical", "index"],
+                    default="none",
+                    help="Auto-assign speaker tags (default: none)")
+    p.add_argument("--set-tag", action="append", default=[],
+                    metavar="SPK=TAG",
+                    help="Set speaker tag, repeatable (e.g. --set-tag spk_0=Me)")
+    p.add_argument("--set-label", action="append", default=[],
+                    metavar="SPK=LABEL",
+                    help="Set speaker label, repeatable (e.g. --set-label spk_0=Mette)")
+    p.add_argument("--session", type=str, default=None,
+                    metavar="TIMESTAMP",
+                    help="Session timestamp for standalone tag operations")
     return p

@@ -134,3 +134,77 @@ def run_pyannote_diarization(wav_path: Path, output_dir: str) -> Path:
         json.dump({"turns": turns}, f, ensure_ascii=False, indent=2)
 
     return out
+
+
+def relabel_segments(
+    normalized_json_path: Path,
+    diarization_json_path: Path,
+    output_dir: str,
+) -> tuple[Path, Path]:
+    """Relabel ASR segments with speaker_ids from diarization overlap.
+
+    For each normalized segment, computes time overlap with every
+    diarization turn and assigns the speaker with the largest total
+    overlap.  If no overlap exists, the original speaker_id is kept.
+
+    Writes:
+        diarized_segments_<timestamp>.json — relabeling map
+        diarized_<timestamp>.txt — transcript with new speaker_ids
+
+    Returns (json_path, txt_path).
+    """
+    from app.commit import _fmt_ts
+
+    with open(normalized_json_path, encoding="utf-8") as f:
+        segments = json.load(f)
+
+    with open(diarization_json_path, encoding="utf-8") as f:
+        turns = json.load(f)["turns"]
+
+    relabeled: list[dict] = []
+
+    for seg in segments:
+        seg_t0 = seg["t0"]
+        seg_t1 = seg["t1"]
+
+        # Accumulate overlap per speaker
+        speaker_overlap: dict[str, float] = {}
+        for turn in turns:
+            overlap = max(0.0, min(seg_t1, turn["end"]) - max(seg_t0, turn["start"]))
+            if overlap > 0:
+                speaker = turn["speaker"]
+                speaker_overlap[speaker] = speaker_overlap.get(speaker, 0.0) + overlap
+
+        if speaker_overlap:
+            new_speaker = max(speaker_overlap, key=speaker_overlap.get)
+        else:
+            new_speaker = seg["speaker_id"]
+
+        relabeled.append({
+            "seg_id": seg["seg_id"],
+            "t0": seg_t0,
+            "t1": seg_t1,
+            "old_speaker_id": seg["speaker_id"],
+            "new_speaker_id": new_speaker,
+        })
+
+    # Extract timestamp from diarization filename
+    ts = diarization_json_path.stem.removeprefix("diarization_")
+
+    json_out = Path(output_dir) / f"diarized_segments_{ts}.json"
+    with open(json_out, "w", encoding="utf-8") as f:
+        json.dump(relabeled, f, ensure_ascii=False, indent=2)
+
+    txt_out = Path(output_dir) / f"diarized_{ts}.txt"
+    last_para: str | None = None
+    with open(txt_out, "w", encoding="utf-8") as f:
+        for seg, rel in zip(segments, relabeled):
+            para = seg.get("paragraph_id")
+            if last_para is not None and para != last_para:
+                f.write("\n")
+            ts0 = _fmt_ts(seg["t0"])
+            ts1 = _fmt_ts(seg["t1"])
+            f.write(f"[{ts0} - {ts1}] [{rel['new_speaker_id']}] {seg['normalized_text']}\n")
+            last_para = para
+
+    return json_out, txt_out

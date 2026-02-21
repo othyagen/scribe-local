@@ -9,6 +9,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import select
@@ -30,7 +31,12 @@ from app.config import (
 )
 from app.audio import AudioCapture, list_devices
 from app.vad import VoiceActivityDetector, VadResult
-from app.diarization import create_diarizer, Diarizer, run_pyannote_diarization
+from app.diarization import (
+    create_diarizer,
+    Diarizer,
+    relabel_segments,
+    run_pyannote_diarization,
+)
 from app.asr import ASREngine
 from app.commit import SegmentCommitter, RawSegment, _fmt_ts
 from app.normalize import Normalizer
@@ -169,7 +175,7 @@ def _ts() -> str:
 
 # ── main loop ────────────────────────────────────────────────────────
 
-def run(config: AppConfig) -> None:
+def run(config: AppConfig, args: object = None) -> None:
     """Run the full streaming pipeline until stopped."""
     sample_rate = config.audio.sample_rate
     short_silence_samples = int(config.vad.short_silence_sec * sample_rate)
@@ -321,6 +327,8 @@ def run(config: AppConfig) -> None:
 
         # Post-session pyannote diarization
         diar_path = None
+        diarized_json = None
+        diarized_txt = None
         if wav_path and config.diarization.backend == "pyannote":
             print(f"[{_ts()}] Running pyannote diarization...")
             try:
@@ -331,6 +339,40 @@ def run(config: AppConfig) -> None:
             except Exception as e:
                 print(f"[{_ts()}] Diarization failed: {e}")
 
+        # Relabel segments with diarization speaker_ids
+        if diar_path:
+            print(f"[{_ts()}] Relabeling segments...")
+            try:
+                diarized_json, diarized_txt = relabel_segments(
+                    writer.normalized_json_path, diar_path, config.output_dir
+                )
+                print(f"[{_ts()}] Segment relabeling complete.")
+            except Exception as e:
+                print(f"[{_ts()}] Segment relabeling failed: {e}")
+
+        # Speaker tagging (after relabeling)
+        tagged_txt = None
+        if diarized_txt:
+            from app.tagging import (
+                load_or_create_tags, apply_auto_tags, save_tags,
+                generate_tag_labeled_txt,
+            )
+            diar_ts = diarized_txt.stem.removeprefix("diarized_")
+            tags = load_or_create_tags(config.output_dir, diar_ts)
+
+            auto_tags = getattr(args, "auto_tags", "none") or "none"
+            if auto_tags != "none" and diarized_json:
+                speakers = sorted(set(
+                    s["new_speaker_id"]
+                    for s in json.loads(diarized_json.read_text("utf-8"))
+                ))
+                apply_auto_tags(tags, auto_tags, speakers)
+
+            save_tags(tags, config.output_dir, diar_ts)
+            tagged_txt = generate_tag_labeled_txt(
+                diarized_txt, tags, config.output_dir, diar_ts
+            )
+
         print("-" * 60)
         print(f"Segments committed : {committer.seg_count}")
         print(f"RAW output         : {writer.raw_json_path}")
@@ -340,6 +382,12 @@ def run(config: AppConfig) -> None:
             print(f"Session audio      : {wav_path}")
         if diar_path:
             print(f"Diarization        : {diar_path}")
+        if diarized_json:
+            print(f"Diarized segments  : {diarized_json}")
+        if diarized_txt:
+            print(f"Diarized transcript: {diarized_txt}")
+        if tagged_txt:
+            print(f"Tagged transcript  : {tagged_txt}")
         print("Session ended.")
 
 
@@ -371,7 +419,46 @@ def main() -> None:
         print(f"Error: unsupported language '{config.language}'. Use da, sv, or en.")
         sys.exit(1)
 
-    run(config)
+    # Standalone tag-only mode
+    if args.session:
+        from app.tagging import (
+            load_or_create_tags, apply_auto_tags, set_tag, set_label,
+            save_tags, generate_tag_labeled_txt,
+        )
+        ts = args.session
+        tags = load_or_create_tags(config.output_dir, ts)
+
+        for entry in args.set_tag:
+            spk, val = entry.split("=", 1)
+            set_tag(tags, spk, val)
+        for entry in args.set_label:
+            spk, val = entry.split("=", 1)
+            set_label(tags, spk, val)
+
+        if args.auto_tags != "none":
+            diarized_seg_path = Path(config.output_dir) / f"diarized_segments_{ts}.json"
+            if diarized_seg_path.exists():
+                speakers = sorted(set(
+                    s["new_speaker_id"]
+                    for s in json.loads(
+                        diarized_seg_path.read_text(encoding="utf-8")
+                    )
+                ))
+                apply_auto_tags(tags, args.auto_tags, speakers)
+
+        tags_path = save_tags(tags, config.output_dir, ts)
+        print(f"Speaker tags     : {tags_path}")
+
+        diarized_txt = Path(config.output_dir) / f"diarized_{ts}.txt"
+        if diarized_txt.exists():
+            labeled = generate_tag_labeled_txt(
+                diarized_txt, tags, config.output_dir, ts
+            )
+            print(f"Tagged transcript: {labeled}")
+
+        sys.exit(0)
+
+    run(config, args)
 
 
 if __name__ == "__main__":

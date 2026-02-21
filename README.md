@@ -90,6 +90,10 @@ python -m app.main --output-dir my_session
 | `--vad-short-silence FLOAT` | Seconds of silence to commit a sentence |
 | `--vad-long-silence FLOAT` | Seconds of silence to start a new paragraph |
 | `--list-audio-devices` | Print audio devices and exit |
+| `--auto-tags {none,alphabetical,index}` | Auto-assign speaker tags (default: `none`) |
+| `--set-tag SPK=TAG` | Set speaker tag, repeatable (e.g. `--set-tag spk_0=Host`) |
+| `--set-label SPK=LABEL` | Set speaker label, repeatable (e.g. `--set-label spk_0=Alice`) |
+| `--session TIMESTAMP` | Session timestamp for standalone tag operations |
 
 ### Stopping
 
@@ -112,6 +116,10 @@ A session produces these files:
 | `changes_<timestamp>_<model>.json` | JSON array | Full audit log of every normalization change |
 | `audio_<timestamp>.wav` | WAV | Full session audio (16kHz, mono, 16-bit PCM) |
 | `diarization_<timestamp>.json` | JSON | Speaker turns (only when `diarization.backend: pyannote`) |
+| `diarized_segments_<timestamp>.json` | JSON array | Segment relabeling map (old → new speaker_id) |
+| `diarized_<timestamp>.txt` | Plain text | Transcript with diarized speaker_ids |
+| `speaker_tags_<timestamp>.json` | JSON | Speaker tag/label mapping |
+| `tag_labeled_<timestamp>.txt` | Plain text | Transcript with human-readable speaker tags |
 
 ### RAW vs. NORMALIZED
 
@@ -149,6 +157,7 @@ Each layer has a single responsibility:
 | `normalize.py` | Apply lexicon corrections with audit logging |
 | `io.py` | Write all output files |
 | `config.py` | Configuration loading and CLI argument parsing |
+| `tagging.py` | Speaker tag/label assignment and tagged transcript generation |
 | `main.py` | Pipeline orchestration |
 
 ### Speaker Diarization
@@ -185,7 +194,51 @@ Diarization output format:
 }
 ```
 
-Note: This does not yet update segment `speaker_id` fields in RAW/normalized outputs — it produces a standalone diarization file only.
+#### Segment relabeling
+
+After diarization, each ASR segment is relabeled with the speaker who has the largest time overlap. This produces `diarized_segments_<timestamp>.json` (relabeling map) and `diarized_<timestamp>.txt` (transcript with new speaker_ids). RAW and normalized outputs are never modified.
+
+### Speaker Tagging
+
+Speaker tags let you assign human-readable names to diarized speakers (`spk_0`, `spk_1`, ...). Tags are generic — use them for any context (clinic, podcast, meeting, etc.).
+
+Tag mapping file format (`speaker_tags_<timestamp>.json`):
+
+```json
+{
+  "spk_0": {"tag": "Host", "label": "Alice"},
+  "spk_1": {"tag": "Guest", "label": null}
+}
+```
+
+The `tag` field is the display name. The optional `label` is a personal name or identifier. In the tagged transcript, speakers appear as `[Host]` or `[Host: Alice]`.
+
+#### Standalone tag mode
+
+Use `--session` to tag an existing session without recording:
+
+```bash
+# Set tags manually
+python -m app.main --session 2026-02-21_16-30-10 \
+  --set-tag spk_0="Host" --set-tag spk_1="Guest" \
+  --set-label spk_0="Alice"
+
+# Auto-tag with alphabetical names (Speaker A, Speaker B, ...)
+python -m app.main --session 2026-02-21_16-30-10 --auto-tags alphabetical
+
+# Auto-tag with index names (Speaker 1, Speaker 2, ...)
+python -m app.main --session 2026-02-21_16-30-10 --auto-tags index
+```
+
+Auto-tags only fill missing entries — they never overwrite existing manual tags. Manual `--set-tag` / `--set-label` overrides are applied first.
+
+#### During a session
+
+Pass `--auto-tags` during recording to auto-tag speakers after diarization completes:
+
+```bash
+python -m app.main --config config.yaml --auto-tags alphabetical
+```
 
 ### Lexicons
 
@@ -261,7 +314,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-53 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), and diarization (DefaultDiarizer, factory, pyannote pipeline with mocks).
+93 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), segment relabeling (overlap assignment, output formats), and speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation).
 
 ---
 

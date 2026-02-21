@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import json
 import os
+import wave
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from app.config import AppConfig
 
@@ -99,13 +101,23 @@ def run_pyannote_diarization(wav_path: Path, output_dir: str) -> Path:
         token=hf_token,
     )
 
-    diarization = pipeline(str(wav_path))
+    # Load WAV as in-memory waveform to avoid torchcodec/FFmpeg dependency
+    with wave.open(str(wav_path), "rb") as wf:
+        sample_rate = wf.getframerate()
+        pcm_bytes = wf.readframes(wf.getnframes())
+    samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32767
+    waveform = torch.from_numpy(samples).unsqueeze(0)  # (1, num_samples)
+
+    result = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+
+    # pyannote 4.x returns DiarizeOutput; extract the Annotation
+    annotation = getattr(result, "speaker_diarization", result)
 
     # Map pyannote labels to spk_0, spk_1, ... (ordered by first appearance)
     label_map: dict[str, str] = {}
     turns: list[dict] = []
 
-    for turn, _, label in diarization.itertracks(yield_label=True):
+    for turn, _, label in annotation.itertracks(yield_label=True):
         if label not in label_map:
             label_map[label] = f"spk_{len(label_map)}"
         turns.append({

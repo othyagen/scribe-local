@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -29,8 +30,8 @@ class FakeTurn:
     end: float
 
 
-def _make_fake_diarization(tracks: list[tuple[float, float, str]]):
-    """Build a mock diarization result from (start, end, label) tuples."""
+def _make_fake_annotation(tracks: list[tuple[float, float, str]]):
+    """Build a mock Annotation with itertracks from (start, end, label) tuples."""
     mock = MagicMock()
     mock.itertracks.return_value = [
         (FakeTurn(start=s, end=e), None, label)
@@ -39,10 +40,23 @@ def _make_fake_diarization(tracks: list[tuple[float, float, str]]):
     return mock
 
 
+def _make_fake_diarization(tracks: list[tuple[float, float, str]]):
+    """Build a mock DiarizeOutput from (start, end, label) tuples."""
+    annotation = _make_fake_annotation(tracks)
+    mock = MagicMock()
+    mock.speaker_diarization = annotation
+    return mock
+
+
 def _make_wav_path(tmp_path: Path, ts: str = "2026-01-01_12-00-00") -> Path:
-    """Create a dummy WAV file with the expected naming convention."""
+    """Create a valid 16kHz mono 16-bit WAV file with silence."""
     p = tmp_path / f"audio_{ts}.wav"
-    p.write_bytes(b"dummy")
+    samples = np.zeros(16000, dtype=np.int16)  # 1 second of silence
+    with wave.open(str(p), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(samples.tobytes())
     return p
 
 
@@ -214,7 +228,7 @@ class TestRunPyannoteDiarization:
 
         assert all(t["speaker"] == "spk_0" for t in data["turns"])
 
-    def test_pipeline_called_with_wav_path(
+    def test_pipeline_called_with_waveform_dict(
         self, mock_pyannote_pipeline, tmp_path, monkeypatch
     ):
         monkeypatch.setenv("HF_TOKEN", "fake-token")
@@ -225,7 +239,11 @@ class TestRunPyannoteDiarization:
         wav = _make_wav_path(tmp_path)
         run_pyannote_diarization(wav, str(tmp_path))
 
-        mock_pipeline.assert_called_once_with(str(wav))
+        mock_pipeline.assert_called_once()
+        call_arg = mock_pipeline.call_args[0][0]
+        assert "waveform" in call_arg
+        assert "sample_rate" in call_arg
+        assert call_arg["sample_rate"] == 16000
 
     def test_pipeline_uses_hf_token(
         self, mock_pyannote_pipeline, tmp_path, monkeypatch

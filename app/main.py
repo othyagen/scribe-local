@@ -16,6 +16,8 @@ import signal
 import sys
 import threading
 import time
+import wave
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -81,6 +83,36 @@ def _display_segment(line: str, changes: list) -> None:
     """Print a segment to the console."""
     suffix = f"  ({len(changes)} corrections)" if changes else ""
     print(f"  {line}{suffix}")
+
+
+def _write_session_wav(
+    chunks: list[np.ndarray],
+    sample_rate: int,
+    output_dir: str,
+) -> Path | None:
+    """Write all captured audio chunks to a single 16-bit PCM WAV file.
+
+    Returns the path on success, None if there is no audio to write.
+    """
+    if not chunks:
+        return None
+
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    out = Path(output_dir) / f"audio_{ts}.wav"
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[{_ts()}] Writing session WAV...")
+    audio = np.concatenate(chunks)
+    pcm = (audio * 32767).clip(-32768, 32767).astype(np.int16)
+
+    with wave.open(str(out), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)  # 16-bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm.tobytes())
+
+    print(f"[{_ts()}] Session WAV written.")
+    return out
 
 
 # ── cross-platform quit listener ─────────────────────────────────────
@@ -174,6 +206,7 @@ def run(config: AppConfig) -> None:
 
     # ── state ────────────────────────────────────────────────────
     speech_buffer: list[np.ndarray] = []
+    session_audio: list[np.ndarray] = []
     buffer_start_sample: int = 0
     total_samples: int = 0
     silence_samples: int = 0
@@ -201,6 +234,7 @@ def run(config: AppConfig) -> None:
             except queue.Empty:
                 continue
 
+            session_audio.append(chunk)
             result = vad.process(chunk)
             total_samples += len(chunk)
 
@@ -282,11 +316,16 @@ def run(config: AppConfig) -> None:
         writer.finalize(timeout=5.0)
         print(f"[{_ts()}] Output files written.")
 
+        # Write session WAV
+        wav_path = _write_session_wav(session_audio, sample_rate, config.output_dir)
+
         print("-" * 60)
         print(f"Segments committed : {committer.seg_count}")
         print(f"RAW output         : {writer.raw_json_path}")
         print(f"Normalized output  : {writer.normalized_json_path}")
         print(f"Change log         : {writer.changes_json_path}")
+        if wav_path:
+            print(f"Session audio      : {wav_path}")
         print("Session ended.")
 
 

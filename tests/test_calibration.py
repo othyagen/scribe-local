@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 import os
+import struct
+import wave
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -12,6 +14,7 @@ import pytest
 
 from app.calibration import (
     cosine_similarity,
+    embed_turns,
     extract_embedding,
     load_profile,
     match_turn_embeddings,
@@ -300,3 +303,129 @@ class TestProfileExistsGuard:
         assert profile_path.exists()
         loaded = load_profile(str(profile_path))
         assert loaded == original_data
+
+
+# ── helpers ──────────────────────────────────────────────────────────
+
+
+def _write_wav(path, samples: np.ndarray, sample_rate: int = 16000):
+    """Write a mono 16-bit PCM WAV file."""
+    pcm = (samples * 32767).astype(np.int16).tobytes()
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm)
+
+
+# ── embed_turns ──────────────────────────────────────────────────────
+
+
+class TestEmbedTurns:
+    def _mock_modules(self, mock_inference_cls):
+        """Return a dict suitable for patching sys.modules with pyannote + torch."""
+        mock_torch = MagicMock()
+        mock_torch.from_numpy.return_value.unsqueeze.return_value.float.return_value = "tensor"
+        mock_pyannote = MagicMock()
+        mock_pyannote_audio = MagicMock()
+        mock_pyannote_audio.Inference = mock_inference_cls
+        return {
+            "torch": mock_torch,
+            "pyannote": mock_pyannote,
+            "pyannote.audio": mock_pyannote_audio,
+        }
+
+    def test_embeds_all_turns(self, tmp_path):
+        wav_path = tmp_path / "audio.wav"
+        audio = np.random.default_rng(0).random(32000).astype(np.float32) * 0.5
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([3.0, 4.0, 0.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns = [
+            {"start": 0.0, "end": 0.5, "speaker": "spk_0"},
+            {"start": 0.5, "end": 1.0, "speaker": "spk_1"},
+        ]
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            result = embed_turns(turns, wav_path)
+
+        assert len(result) == 2
+        for t in result:
+            assert "embedding" in t
+            norm = math.sqrt(sum(x * x for x in t["embedding"]))
+            assert norm == pytest.approx(1.0, abs=0.01)
+
+    def test_model_loaded_once(self, tmp_path):
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(48000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([1.0, 0.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns = [
+            {"start": 0.0, "end": 1.0, "speaker": "spk_0"},
+            {"start": 1.0, "end": 2.0, "speaker": "spk_1"},
+            {"start": 2.0, "end": 3.0, "speaker": "spk_0"},
+        ]
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            embed_turns(turns, wav_path)
+
+        # Inference constructor called exactly once
+        mock_cls.assert_called_once()
+
+    def test_time_to_sample_bounds(self, tmp_path):
+        """Turn extending past WAV end is clamped — no crash."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(16000, dtype=np.float32)  # 1 second
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([0.0, 1.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns = [{"start": 0.5, "end": 5.0, "speaker": "spk_0"}]  # end > WAV length
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            result = embed_turns(turns, wav_path)
+
+        assert "embedding" in result[0]
+
+
+# ── calibration pipeline integration ─────────────────────────────────
+
+
+class TestCalibrationPipelineIntegration:
+    def test_override_above_threshold(self, tmp_path):
+        """embed_turns (mocked) + match_turn_embeddings with profile overrides speaker."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(32000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0], "Speaker B": [0.0, 1.0, 0.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+
+        turns = [
+            {"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"},
+            {"start": 1.0, "end": 2.0, "speaker": "SPEAKER_01"},
+        ]
+
+        # Simulate embed_turns attaching embeddings close to profile speakers
+        def fake_embed(t_list, _wav):
+            t_list[0]["embedding"] = [0.98, 0.05, 0.0]  # close to Speaker A
+            t_list[1]["embedding"] = [0.05, 0.97, 0.0]  # close to Speaker B
+            return t_list
+
+        with patch("app.calibration.embed_turns", side_effect=fake_embed):
+            fake_embed(turns, wav_path)
+
+        result = match_turn_embeddings(turns, profile, threshold=0.7)
+        assert result[0]["speaker"] == "spk_0"
+        assert result[1]["speaker"] == "spk_1"

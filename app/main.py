@@ -360,8 +360,9 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"[{_ts()}] Smoothed: {original_count} → {len(diar_data['turns'])} turns.")
 
         # Apply calibration profile (override speaker IDs from embeddings)
+        calibrated_path = None
         if diar_path and config.diarization.calibration_profile:
-            from app.calibration import load_profile, match_turn_embeddings
+            from app.calibration import embed_turns, load_profile, match_turn_embeddings
             profile_path = os.path.join(
                 "profiles",
                 f"{config.diarization.calibration_profile}.json",
@@ -370,12 +371,18 @@ def run(config: AppConfig, args: object = None) -> None:
                 profile = load_profile(profile_path)
                 with open(diar_path, encoding="utf-8") as f:
                     diar_data = json.load(f)
+                print(f"[{_ts()}] Extracting per-turn embeddings...")
+                embed_turns(diar_data["turns"], wav_path)
                 diar_data["turns"] = match_turn_embeddings(
                     diar_data["turns"],
                     profile,
                     config.diarization.calibration_similarity_threshold,
                 )
-                with open(diar_path, "w", encoding="utf-8") as f:
+                # Strip embeddings before writing
+                for t in diar_data["turns"]:
+                    t.pop("embedding", None)
+                calibrated_path = diar_path.with_suffix(".calibrated.json")
+                with open(calibrated_path, "w", encoding="utf-8") as f:
                     json.dump(diar_data, f, ensure_ascii=False, indent=2)
                 print(f"[{_ts()}] Applied calibration profile: {config.diarization.calibration_profile}")
             except FileNotFoundError as e:
@@ -383,32 +390,39 @@ def run(config: AppConfig, args: object = None) -> None:
             except Exception as e:
                 print(f"[{_ts()}] Calibration failed: {e}")
 
+        # Prefer calibrated diarization if available, otherwise original
+        active_diar_path = (
+            calibrated_path
+            if calibrated_path and calibrated_path.exists()
+            else diar_path
+        )
+
         # Apply speaker merge map (if exists)
-        if diar_path:
+        if active_diar_path:
             diar_ts = diar_path.stem.removeprefix("diarization_")
             merge_map = load_merge_map(config.output_dir, diar_ts)
             if merge_map:
                 print(f"[{_ts()}] Applying speaker merge map...")
                 try:
                     resolved = resolve_merge_chains(merge_map)
-                    with open(diar_path, encoding="utf-8") as f:
+                    with open(active_diar_path, encoding="utf-8") as f:
                         diar_data = json.load(f)
                     original_count = len(diar_data["turns"])
                     diar_data["turns"] = apply_merge_map(
                         diar_data["turns"], resolved
                     )
-                    with open(diar_path, "w", encoding="utf-8") as f:
+                    with open(active_diar_path, "w", encoding="utf-8") as f:
                         json.dump(diar_data, f, ensure_ascii=False, indent=2)
                     print(f"[{_ts()}] Merged: {original_count} → {len(diar_data['turns'])} turns.")
                 except ValueError as e:
                     print(f"[{_ts()}] Speaker merge failed: {e}")
 
         # Relabel segments with diarization speaker_ids
-        if diar_path:
+        if active_diar_path:
             print(f"[{_ts()}] Relabeling segments...")
             try:
                 diarized_json, diarized_txt = relabel_segments(
-                    writer.normalized_json_path, diar_path, config.output_dir
+                    writer.normalized_json_path, active_diar_path, config.output_dir
                 )
                 print(f"[{_ts()}] Segment relabeling complete.")
             except Exception as e:

@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import time
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -81,6 +82,41 @@ def match_turn_embeddings(
                 turn["speaker"] = mapped_id
 
     return result
+
+
+def embed_turns(turns: list[dict], wav_path: str | Path) -> list[dict]:
+    """Attach speaker embeddings to diarization turns.
+
+    Loads the session WAV, creates a pyannote Inference model once,
+    and for each turn slices the audio, extracts an L2-normalised
+    embedding, and sets ``turn["embedding"]``.
+
+    Returns the same list (mutated in place for efficiency).
+    """
+    import torch
+    from pyannote.audio import Inference
+
+    wav_path = Path(wav_path)
+    with wave.open(str(wav_path), "rb") as wf:
+        sample_rate = wf.getframerate()
+        pcm_bytes = wf.readframes(wf.getnframes())
+    samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32767
+    n_samples = len(samples)
+
+    inference = Inference("pyannote/embedding", use_auth_token=True)
+
+    for turn in turns:
+        start_idx = max(0, int(round(turn["start"] * sample_rate)))
+        end_idx = min(n_samples, int(round(turn["end"] * sample_rate)))
+        segment = samples[start_idx:end_idx]
+        waveform = torch.from_numpy(segment).unsqueeze(0).float()
+        raw = inference({"waveform": waveform, "sample_rate": sample_rate})
+        norm = float(np.linalg.norm(raw))
+        if norm > 0:
+            raw = raw / norm
+        turn["embedding"] = raw.tolist()
+
+    return turns
 
 
 def extract_embedding(audio: np.ndarray, sample_rate: int) -> list[float]:

@@ -359,6 +359,30 @@ def run(config: AppConfig, args: object = None) -> None:
                 json.dump(diar_data, f, ensure_ascii=False, indent=2)
             print(f"[{_ts()}] Smoothed: {original_count} → {len(diar_data['turns'])} turns.")
 
+        # Apply calibration profile (override speaker IDs from embeddings)
+        if diar_path and config.diarization.calibration_profile:
+            from app.calibration import load_profile, match_turn_embeddings
+            profile_path = os.path.join(
+                "profiles",
+                f"{config.diarization.calibration_profile}.json",
+            )
+            try:
+                profile = load_profile(profile_path)
+                with open(diar_path, encoding="utf-8") as f:
+                    diar_data = json.load(f)
+                diar_data["turns"] = match_turn_embeddings(
+                    diar_data["turns"],
+                    profile,
+                    config.diarization.calibration_similarity_threshold,
+                )
+                with open(diar_path, "w", encoding="utf-8") as f:
+                    json.dump(diar_data, f, ensure_ascii=False, indent=2)
+                print(f"[{_ts()}] Applied calibration profile: {config.diarization.calibration_profile}")
+            except FileNotFoundError as e:
+                print(f"[{_ts()}] Calibration profile not found: {e}")
+            except Exception as e:
+                print(f"[{_ts()}] Calibration failed: {e}")
+
         # Apply speaker merge map (if exists)
         if diar_path:
             diar_ts = diar_path.stem.removeprefix("diarization_")

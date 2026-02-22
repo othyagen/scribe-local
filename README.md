@@ -329,6 +329,39 @@ Pass `--auto-tags` during recording to auto-tag speakers after diarization compl
 python -m app.main --config config.yaml --auto-tags alphabetical
 ```
 
+### Calibration mode (Phase 1 — infrastructure)
+
+Calibration profiles let the pipeline assign consistent `spk_N` IDs across sessions by matching speaker embeddings. A profile maps human-readable speaker names to embedding vectors and internal `spk_N` IDs.
+
+Profile format (`profiles/<name>.json`):
+
+```json
+{
+  "speakers": {
+    "Speaker A": {"embedding": [0.12, -0.34, ...]},
+    "Speaker B": {"embedding": [0.56, 0.78, ...]}
+  },
+  "speaker_id_map": {
+    "Speaker A": "spk_0",
+    "Speaker B": "spk_1"
+  }
+}
+```
+
+The calibration step runs after smoothing and before merge. For each diarization turn that has an `"embedding"` field, it computes cosine similarity against all profile speakers and overrides `turn["speaker"]` with the mapped `spk_N` ID if the best match exceeds the threshold.
+
+Calibration only influences internal `speaker` IDs (`spk_0`, `spk_1`, ...). Human-readable labels are handled separately by the tagging layer.
+
+Configuration:
+
+```yaml
+diarization:
+  calibration_profile: null   # profile name from profiles/ (without .json)
+  calibration_similarity_threshold: 0.72
+```
+
+> **Note:** Phase 1 provides the matching infrastructure only. Real audio embedding extraction is not yet implemented — turns must already contain an `"embedding"` field for matching to occur.
+
 ### Lexicons
 
 Lexicons live in `resources/lexicons/<language>/`:
@@ -389,6 +422,8 @@ diarization:
   smoothing: true     # merge short backchannel turns after diarization
   min_turn_sec: 0.7   # merge turns shorter than this into neighbors
   gap_merge_sec: 0.3  # fill same-speaker gaps smaller than this
+  calibration_profile: null   # profile name from profiles/ (without .json)
+  calibration_similarity_threshold: 0.72
 
 normalization:
   enabled: true
@@ -406,7 +441,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-130 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), and end-to-end integration (full pipeline without live microphone).
+148 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, profile I/O, config parsing), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

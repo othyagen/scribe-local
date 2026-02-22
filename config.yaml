@@ -23,6 +23,8 @@ diarization:
   smoothing: true        # merge short backchannel turns after pyannote diarization
   min_turn_sec: 0.7      # merge turns shorter than this into neighbors
   gap_merge_sec: 0.3     # fill same-speaker gaps smaller than this
+  calibration_profile: null   # profile name from profiles/ (without .json)
+  calibration_similarity_threshold: 0.72
 
 normalization:
   enabled: true

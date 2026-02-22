@@ -13,6 +13,9 @@ import numpy as np
 import pytest
 
 from app.calibration import (
+    apply_cluster_override,
+    assign_clusters_to_profile,
+    build_cluster_embeddings,
     cosine_similarity,
     embed_turns,
     extract_embedding,
@@ -429,3 +432,122 @@ class TestCalibrationPipelineIntegration:
         result = match_turn_embeddings(turns, profile, threshold=0.7)
         assert result[0]["speaker"] == "spk_0"
         assert result[1]["speaker"] == "spk_1"
+
+    def test_cluster_pipeline_overrides_speakers(self, tmp_path):
+        """Full cluster pipeline: embed → cluster → assign → override."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(32000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0], "Speaker B": [0.0, 1.0, 0.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+
+        turns = [
+            {"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00",
+             "embedding": [0.98, 0.05, 0.0]},
+            {"start": 1.0, "end": 2.0, "speaker": "SPEAKER_01",
+             "embedding": [0.05, 0.97, 0.0]},
+        ]
+
+        cluster_embs = build_cluster_embeddings(turns)
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.7, margin=0.05
+        )
+        result = apply_cluster_override(turns, mapping)
+        assert result[0]["speaker"] == "spk_0"
+        assert result[1]["speaker"] == "spk_1"
+
+
+# ── build cluster embeddings ──────────────────────────────────────────
+
+
+class TestBuildClusterEmbeddings:
+    def test_cluster_embedding_normalized(self):
+        """Mean embeddings for each cluster are L2-normalized."""
+        turns = [
+            _turn(0.0, 1.0, "spk_0", embedding=[1.0, 0.0, 0.0]),
+            _turn(1.0, 2.0, "spk_0", embedding=[0.0, 1.0, 0.0]),
+            _turn(2.0, 3.0, "spk_1", embedding=[0.0, 0.0, 1.0]),
+            _turn(3.0, 4.0, "spk_1", embedding=[0.0, 0.0, 2.0]),
+        ]
+        result = build_cluster_embeddings(turns)
+        assert "spk_0" in result
+        assert "spk_1" in result
+        for spk, emb in result.items():
+            norm = math.sqrt(sum(x * x for x in emb))
+            assert norm == pytest.approx(1.0, abs=1e-6), f"{spk} not normalized"
+
+    def test_skips_turns_without_embedding(self):
+        """Turns missing the embedding key are excluded from cluster mean."""
+        turns = [
+            _turn(0.0, 1.0, "spk_0", embedding=[1.0, 0.0]),
+            _turn(1.0, 2.0, "spk_0"),  # no embedding
+            _turn(2.0, 3.0, "spk_1"),  # no embedding — cluster should be absent
+        ]
+        result = build_cluster_embeddings(turns)
+        assert "spk_0" in result
+        assert "spk_1" not in result
+
+
+# ── assign clusters to profile ────────────────────────────────────────
+
+
+class TestAssignClustersToProfile:
+    def test_1_to_1_assignment(self):
+        """Two clusters, two profile speakers with clear best matches."""
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0], "Speaker B": [0.0, 1.0, 0.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+        cluster_embs = {"c0": [0.95, 0.1, 0.0], "c1": [0.1, 0.95, 0.0]}
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.7, margin=0.05
+        )
+        assert mapping["c0"] == "spk_0"
+        assert mapping["c1"] == "spk_1"
+
+    def test_no_double_assign(self):
+        """Both clusters closest to same profile speaker — only best one assigned."""
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0], "Speaker B": [0.0, 1.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+        # Both clusters point towards Speaker A, but c0 is closer
+        cluster_embs = {"c0": [0.99, 0.01], "c1": [0.85, 0.1]}
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.7, margin=0.05
+        )
+        assert mapping.get("c0") == "spk_0"
+        # c1 should now be matched against remaining Speaker B
+        # c1's similarity to Speaker B: cos([0.85,0.1],[0,1]) is low
+        # so c1 may or may not be assigned depending on threshold
+        assert "spk_0" not in [v for k, v in mapping.items() if k != "c0"]
+
+    def test_below_threshold_no_assign(self):
+        """All similarities below threshold → empty mapping."""
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"c0": [0.0, 1.0, 0.0]}  # orthogonal → sim ≈ 0
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.7, margin=0.05
+        )
+        assert mapping == {}
+
+    def test_below_margin_no_assign(self):
+        """Best and second-best within margin → no assignment for that cluster."""
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0], "Speaker B": [0.0, 1.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+        # Cluster equally similar to both (45 degrees from each)
+        v = [1.0 / math.sqrt(2), 1.0 / math.sqrt(2)]
+        cluster_embs = {"c0": v}
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.3, margin=0.05
+        )
+        # Similarities to A and B are identical, so margin check fails
+        assert "c0" not in mapping

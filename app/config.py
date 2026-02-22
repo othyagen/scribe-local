@@ -43,6 +43,7 @@ class DiarizationConfig:
     gap_merge_sec: float = 0.3
     calibration_profile: Optional[str] = None
     calibration_similarity_threshold: float = 0.72
+    calibration_similarity_margin: float = 0.05
 
 
 @dataclass
@@ -118,6 +119,9 @@ def _build_diarization(d: dict) -> DiarizationConfig:
         calibration_profile=d.get("calibration_profile"),
         calibration_similarity_threshold=d.get(
             "calibration_similarity_threshold", 0.72
+        ),
+        calibration_similarity_margin=d.get(
+            "calibration_similarity_margin", 0.05
         ),
     )
 

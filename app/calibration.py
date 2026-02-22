@@ -84,6 +84,120 @@ def match_turn_embeddings(
     return result
 
 
+def build_cluster_embeddings(turns: list[dict]) -> dict[str, list[float]]:
+    """Compute one mean embedding per diarization speaker cluster.
+
+    Groups turns by ``turn["speaker"]`` (values like "spk_0", "spk_1", ...),
+    averages their ``"embedding"`` vectors element-wise, and L2-normalizes.
+    Turns without an ``"embedding"`` key are skipped.
+
+    Returns ``{speaker_id: normalized_mean_embedding}``.
+    """
+    clusters: dict[str, list[list[float]]] = {}
+    for turn in turns:
+        if "embedding" not in turn:
+            continue
+        spk = turn["speaker"]
+        clusters.setdefault(spk, []).append(turn["embedding"])
+
+    result: dict[str, list[float]] = {}
+    for spk, embs in clusters.items():
+        if not embs:
+            continue
+        mean = [sum(col) / len(col) for col in zip(*embs)]
+        norm = math.sqrt(sum(x * x for x in mean))
+        if norm > 0:
+            mean = [x / norm for x in mean]
+        result[spk] = mean
+    return result
+
+
+def assign_clusters_to_profile(
+    cluster_embs: dict[str, list[float]],
+    profile: dict,
+    threshold: float,
+    margin: float,
+) -> dict[str, str]:
+    """Assign diarization clusters to profile speakers via greedy 1:1 matching.
+
+    Builds a cosine similarity matrix (cluster × profile speaker), then
+    greedily assigns the highest-scoring pair if it meets *threshold* and
+    the gap to the second-best profile speaker for that cluster >= *margin*.
+    When only one profile speaker remains, the margin check always passes.
+
+    Returns ``{cluster_speaker_id: profile_spk_N}`` mapping.
+    """
+    speakers = profile.get("speakers", {})
+    id_map = profile.get("speaker_id_map", {})
+    if not speakers or not cluster_embs:
+        return {}
+
+    cluster_ids = list(cluster_embs.keys())
+    profile_names = list(speakers.keys())
+
+    # Build similarity matrix
+    sim: dict[str, dict[str, float]] = {}
+    for cid in cluster_ids:
+        sim[cid] = {}
+        for pname in profile_names:
+            sim[cid][pname] = cosine_similarity(
+                cluster_embs[cid], speakers[pname]["embedding"]
+            )
+
+    mapping: dict[str, str] = {}
+    remaining_clusters = set(cluster_ids)
+    remaining_profiles = set(profile_names)
+
+    while remaining_clusters and remaining_profiles:
+        best_score = -1.0
+        best_cid = None
+        best_pname = None
+        for cid in remaining_clusters:
+            for pname in remaining_profiles:
+                if sim[cid][pname] > best_score:
+                    best_score = sim[cid][pname]
+                    best_cid = cid
+                    best_pname = pname
+
+        if best_cid is None or best_score < threshold:
+            break
+
+        # Margin check: second-best profile speaker for this cluster
+        second_best = -float("inf")
+        for pname in remaining_profiles:
+            if pname != best_pname:
+                second_best = max(second_best, sim[best_cid][pname])
+
+        if (best_score - second_best) < margin:
+            # Ambiguous — skip this cluster
+            remaining_clusters.discard(best_cid)
+            continue
+
+        mapped_id = id_map.get(best_pname)
+        if mapped_id is not None:
+            mapping[best_cid] = mapped_id
+        remaining_clusters.discard(best_cid)
+        remaining_profiles.discard(best_pname)
+
+    return mapping
+
+
+def apply_cluster_override(
+    turns: list[dict],
+    mapping: dict[str, str],
+) -> list[dict]:
+    """Override ``turn["speaker"]`` using a cluster→profile mapping.
+
+    Returns a new list — does not mutate *turns*.
+    """
+    result = copy.deepcopy(turns)
+    for turn in result:
+        mapped = mapping.get(turn["speaker"])
+        if mapped is not None:
+            turn["speaker"] = mapped
+    return result
+
+
 def embed_turns(turns: list[dict], wav_path: str | Path) -> list[dict]:
     """Attach speaker embeddings to diarization turns.
 

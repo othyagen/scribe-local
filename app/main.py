@@ -362,7 +362,11 @@ def run(config: AppConfig, args: object = None) -> None:
         # Apply calibration profile (override speaker IDs from embeddings)
         calibrated_path = None
         if diar_path and config.diarization.calibration_profile:
-            from app.calibration import embed_turns, load_profile, match_turn_embeddings
+            from app.calibration import (
+                embed_turns, load_profile,
+                build_cluster_embeddings, assign_clusters_to_profile,
+                apply_cluster_override,
+            )
             profile_path = os.path.join(
                 "profiles",
                 f"{config.diarization.calibration_profile}.json",
@@ -373,10 +377,15 @@ def run(config: AppConfig, args: object = None) -> None:
                     diar_data = json.load(f)
                 print(f"[{_ts()}] Extracting per-turn embeddings...")
                 embed_turns(diar_data["turns"], wav_path)
-                diar_data["turns"] = match_turn_embeddings(
-                    diar_data["turns"],
+                cluster_embs = build_cluster_embeddings(diar_data["turns"])
+                mapping = assign_clusters_to_profile(
+                    cluster_embs,
                     profile,
                     config.diarization.calibration_similarity_threshold,
+                    config.diarization.calibration_similarity_margin,
+                )
+                diar_data["turns"] = apply_cluster_override(
+                    diar_data["turns"], mapping
                 )
                 # Strip embeddings before writing
                 for t in diar_data["turns"]:

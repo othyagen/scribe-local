@@ -466,6 +466,32 @@ def main() -> None:
         list_devices()
         sys.exit(0)
 
+    # --create-profile: record voice samples and exit
+    if args.create_profile:
+        # Load config early for audio settings
+        config_path = Path(args.config)
+        if config_path.exists():
+            config = load_config(str(config_path))
+        elif args.config != "config.yaml":
+            print(f"Error: config file not found: {args.config}")
+            sys.exit(1)
+        else:
+            config = AppConfig()
+        config = apply_cli_overrides(config, args)
+
+        from app.calibration import record_and_build_profile, save_profile
+        profile_path = os.path.join("profiles", f"{args.create_profile}.json")
+        if os.path.exists(profile_path):
+            print(f"Error: profile already exists: {profile_path}")
+            print("Delete it manually or choose a different name.")
+            sys.exit(1)
+        profile = record_and_build_profile(
+            config, args.profile_speakers, args.profile_duration,
+        )
+        path = save_profile(profile_path, profile)
+        print(f"Profile saved: {path}")
+        sys.exit(0)
+
     # Load config
     config_path = Path(args.config)
     if config_path.exists():

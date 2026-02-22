@@ -1,11 +1,16 @@
-"""Calibration profiles and embedding matching (Phase 1 — infrastructure)."""
+"""Calibration profiles and embedding matching."""
 
 from __future__ import annotations
 
 import copy
 import json
 import math
+import time
 from pathlib import Path
+
+import numpy as np
+
+from app.config import AppConfig
 
 
 def load_profile(profile_path: str) -> dict:
@@ -76,3 +81,67 @@ def match_turn_embeddings(
                 turn["speaker"] = mapped_id
 
     return result
+
+
+def extract_embedding(audio: np.ndarray, sample_rate: int) -> list[float]:
+    """Extract a speaker embedding from an audio array via pyannote.
+
+    Requires HF_TOKEN environment variable and pyannote model access.
+    Returns an L2-normalized embedding as a plain Python list of floats.
+    """
+    import torch
+    from pyannote.audio import Inference
+
+    inference = Inference("pyannote/embedding", use_auth_token=True)
+    waveform = torch.from_numpy(audio).unsqueeze(0).float()
+    embedding = inference({"waveform": waveform, "sample_rate": sample_rate})
+    # L2-normalize
+    norm = float(np.linalg.norm(embedding))
+    if norm > 0:
+        embedding = embedding / norm
+    return embedding.tolist()
+
+
+def record_and_build_profile(
+    config: AppConfig,
+    num_speakers: int,
+    duration_sec: float,
+) -> dict:
+    """Record voice samples and build a calibration profile.
+
+    For each speaker, records audio for *duration_sec* seconds using the
+    configured microphone, extracts an embedding, and builds a profile dict.
+    """
+    from app.audio import AudioCapture
+
+    audio = AudioCapture(config)
+    audio.start()
+
+    speakers: dict[str, dict] = {}
+    speaker_id_map: dict[str, str] = {}
+
+    try:
+        for i in range(num_speakers):
+            label = f"Speaker {chr(65 + i)}"
+            spk_id = f"spk_{i}"
+            print(f"Calibration: {label}, speak now ({duration_sec}s)...")
+
+            chunks: list[np.ndarray] = []
+            elapsed = 0.0
+            while elapsed < duration_sec:
+                try:
+                    chunk = audio.get_chunk(timeout=1.0)
+                    chunks.append(chunk)
+                    elapsed += len(chunk) / config.audio.sample_rate
+                except Exception:
+                    continue
+
+            recording = np.concatenate(chunks)
+            print(f"  Extracting embedding for {label}...")
+            emb = extract_embedding(recording, config.audio.sample_rate)
+            speakers[label] = {"embedding": emb}
+            speaker_id_map[label] = spk_id
+    finally:
+        audio.stop()
+
+    return {"speakers": speakers, "speaker_id_map": speaker_id_map}

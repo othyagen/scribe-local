@@ -192,4 +192,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--merge", action="append", default=[],
                     metavar="SPK=TARGET",
                     help="Merge speaker into target, repeatable (e.g. --merge spk_2=spk_0)")
+
+    # Calibration profile creation
+    p.add_argument("--create-profile", type=str, default=None,
+                    metavar="NAME", help="Create a calibration profile and exit")
+    p.add_argument("--profile-speakers", type=int, default=2,
+                    help="Number of speakers to record (default: 2)")
+    p.add_argument("--profile-duration", type=float, default=12.0,
+                    help="Recording duration per speaker in seconds (default: 12)")
     return p

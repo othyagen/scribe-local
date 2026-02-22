@@ -350,6 +350,18 @@ Profile format (`profiles/<name>.json`):
 
 The calibration step runs after smoothing and before merge. For each diarization turn that has an `"embedding"` field, it computes cosine similarity against all profile speakers and overrides `turn["speaker"]` with the mapped `spk_N` ID if the best match exceeds the threshold.
 
+#### Creating calibration profiles
+
+Record voice samples and save embeddings:
+
+```bash
+python -m app.main --create-profile my_clinic --profile-speakers 2 --profile-duration 12
+```
+
+This records each speaker for 12 seconds, extracts embeddings, and saves to `profiles/my_clinic.json`.
+
+Requires `HF_TOKEN` environment variable and pyannote model access.
+
 Calibration only influences internal `speaker` IDs (`spk_0`, `spk_1`, ...). Human-readable labels are handled separately by the tagging layer.
 
 Configuration:
@@ -441,7 +453,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-148 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, profile I/O, config parsing), and end-to-end integration (full pipeline without live microphone).
+156 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, profile I/O, config parsing), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

@@ -361,11 +361,13 @@ def run(config: AppConfig, args: object = None) -> None:
 
         # Apply calibration profile (override speaker IDs from embeddings)
         calibrated_path = None
+        cal_report_path = None
         if diar_path and config.diarization.calibration_profile:
             from app.calibration import (
                 embed_turns, load_profile,
                 build_cluster_embeddings, assign_clusters_to_profile,
                 apply_cluster_override,
+                build_calibration_report, print_calibration_debug,
             )
             profile_path = os.path.join(
                 "profiles",
@@ -384,6 +386,19 @@ def run(config: AppConfig, args: object = None) -> None:
                     config.diarization.calibration_similarity_threshold,
                     config.diarization.calibration_similarity_margin,
                 )
+                # Diagnostics report
+                cal_report = build_calibration_report(
+                    cluster_embs, profile,
+                    config.diarization.calibration_similarity_threshold,
+                    config.diarization.calibration_similarity_margin,
+                    mapping, config.diarization.calibration_profile,
+                )
+                if config.diarization.calibration_debug:
+                    print_calibration_debug(cal_report)
+                cal_report_path = diar_path.with_suffix(".calibration_report.json")
+                with open(cal_report_path, "w", encoding="utf-8") as f:
+                    json.dump(cal_report, f, ensure_ascii=False, indent=2)
+
                 diar_data["turns"] = apply_cluster_override(
                     diar_data["turns"], mapping
                 )
@@ -469,6 +484,8 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"Session audio      : {wav_path}")
         if diar_path:
             print(f"Diarization        : {diar_path}")
+        if cal_report_path:
+            print(f"Calibration report : {cal_report_path}")
         if diarized_json:
             print(f"Diarized segments  : {diarized_json}")
         if diarized_txt:

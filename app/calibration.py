@@ -198,6 +198,100 @@ def apply_cluster_override(
     return result
 
 
+def build_calibration_report(
+    cluster_embs: dict[str, list[float]],
+    profile: dict,
+    threshold: float,
+    margin: float,
+    mapping: dict[str, str],
+    profile_name: str,
+) -> dict:
+    """Build a calibration diagnostics report.
+
+    Computes the full similarity matrix between cluster embeddings and
+    profile speakers, and documents the assignment decision for each cluster.
+    Does not modify any calibration state.
+    """
+    speakers = profile.get("speakers", {})
+    id_map = profile.get("speaker_id_map", {})
+    cluster_ids = sorted(cluster_embs.keys())
+    profile_names = sorted(speakers.keys())
+
+    # Similarity matrix
+    similarity: dict[str, dict[str, float]] = {}
+    for cid in cluster_ids:
+        similarity[cid] = {}
+        for pname in profile_names:
+            similarity[cid][pname] = round(
+                cosine_similarity(cluster_embs[cid], speakers[pname]["embedding"]),
+                4,
+            )
+
+    # Per-cluster decisions
+    decisions: dict[str, dict] = {}
+    for cid in cluster_ids:
+        scores = similarity[cid]
+        if not scores:
+            continue
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        best_name, best_score = ranked[0]
+        second_name, second_score = ranked[1] if len(ranked) > 1 else (None, -float("inf"))
+        gap = round(best_score - second_score, 4) if second_name else float("inf")
+
+        assigned = cid in mapping
+        if assigned:
+            reason = "ok"
+        elif best_score < threshold:
+            reason = "below_threshold"
+        else:
+            reason = "below_margin"
+
+        decision: dict = {
+            "best": best_name,
+            "best_score": best_score,
+            "second": second_name,
+            "second_score": second_score if second_name else None,
+            "margin": gap if second_name else None,
+            "assigned": assigned,
+            "reason": reason,
+        }
+        if assigned:
+            decision["mapped_to"] = mapping[cid]
+        decisions[cid] = decision
+
+    return {
+        "profile_name": profile_name,
+        "threshold": threshold,
+        "margin_required": margin,
+        "clusters": cluster_ids,
+        "profile_speakers": profile_names,
+        "profile_speaker_id_map": {k: v for k, v in id_map.items() if k in profile_names},
+        "similarity": similarity,
+        "decisions": decisions,
+        "final_mapping": mapping,
+    }
+
+
+def print_calibration_debug(report: dict) -> None:
+    """Print a human-readable calibration diagnostics summary."""
+    print(f"[CAL] Profile: {report['profile_name']}"
+          f" threshold={report['threshold']} margin={report['margin_required']}")
+    for cid, dec in report["decisions"].items():
+        best_part = f"best {dec['best']}={dec['best_score']:.2f}"
+        if dec["second"] is not None:
+            second_part = f" second {dec['second']}={dec['second_score']:.2f}"
+            margin_part = f" margin={dec['margin']:.2f}"
+        else:
+            second_part = ""
+            margin_part = ""
+        if dec["assigned"]:
+            result = f"ASSIGNED {cid}->{dec['mapped_to']}"
+        else:
+            result = f"NOT ASSIGNED ({dec['reason']})"
+        print(f"[CAL] {cid}: {best_part}{second_part}{margin_part} -> {result}")
+    print(f"[CAL] mapping: {json.dumps(report['final_mapping'])}")
+
+
 def embed_turns(turns: list[dict], wav_path: str | Path) -> list[dict]:
     """Attach speaker embeddings to diarization turns.
 

@@ -370,9 +370,38 @@ Configuration:
 diarization:
   calibration_profile: null   # profile name from profiles/ (without .json)
   calibration_similarity_threshold: 0.72
+  calibration_similarity_margin: 0.05
+  calibration_debug: false
 ```
 
 > **Note:** Phase 1 provides the matching infrastructure only. Real audio embedding extraction is not yet implemented — turns must already contain an `"embedding"` field for matching to occur.
+
+### Calibration diagnostics (Phase 2D)
+
+When calibration runs, a JSON report is always written next to the calibrated diarization file:
+
+```
+outputs/diarization_<ts>.calibration_report.json
+```
+
+The report contains the full similarity matrix (each cluster vs each profile speaker), per-cluster assignment decisions (best/second-best scores, margin, pass/fail reason), and the final mapping.
+
+To also print a human-readable summary to the console, use `--calibration-debug`:
+
+```bash
+python -m app.main --calibration-debug
+```
+
+Example console output:
+
+```
+[CAL] Profile: my_clinic threshold=0.72 margin=0.05
+[CAL] spk_0: best Speaker A=0.81 second Speaker B=0.65 margin=0.16 -> ASSIGNED spk_0->spk_0
+[CAL] spk_1: best Speaker B=0.84 second Speaker A=0.71 margin=0.13 -> ASSIGNED spk_1->spk_1
+[CAL] mapping: {"spk_0":"spk_0","spk_1":"spk_1"}
+```
+
+This can also be enabled via config YAML (`diarization.calibration_debug: true`).
 
 ### Lexicons
 
@@ -453,7 +482,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-167 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, per-turn embedding extraction, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
+176 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

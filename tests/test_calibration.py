@@ -15,12 +15,14 @@ import pytest
 from app.calibration import (
     apply_cluster_override,
     assign_clusters_to_profile,
+    build_calibration_report,
     build_cluster_embeddings,
     cosine_similarity,
     embed_turns,
     extract_embedding,
     load_profile,
     match_turn_embeddings,
+    print_calibration_debug,
     record_and_build_profile,
     save_profile,
 )
@@ -551,3 +553,128 @@ class TestAssignClustersToProfile:
         )
         # Similarities to A and B are identical, so margin check fails
         assert "c0" not in mapping
+
+
+# ── calibration diagnostics ───────────────────────────────────────────
+
+
+class TestCalibrationDiagnostics:
+    def _setup(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0], "Speaker B": [0.0, 1.0, 0.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+        cluster_embs = {"spk_0": [0.95, 0.1, 0.0], "spk_1": [0.1, 0.95, 0.0]}
+        mapping = assign_clusters_to_profile(
+            cluster_embs, profile, threshold=0.7, margin=0.05
+        )
+        return cluster_embs, profile, mapping
+
+    def test_report_contains_similarity_and_mapping(self):
+        cluster_embs, profile, mapping = self._setup()
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping=mapping, profile_name="test_clinic",
+        )
+        # Top-level fields
+        assert report["profile_name"] == "test_clinic"
+        assert report["threshold"] == 0.7
+        assert report["margin_required"] == 0.05
+        assert sorted(report["clusters"]) == ["spk_0", "spk_1"]
+        assert sorted(report["profile_speakers"]) == ["Speaker A", "Speaker B"]
+        assert report["profile_speaker_id_map"]["Speaker A"] == "spk_0"
+
+        # Similarity matrix
+        assert "spk_0" in report["similarity"]
+        assert "Speaker A" in report["similarity"]["spk_0"]
+        assert "Speaker B" in report["similarity"]["spk_0"]
+        # spk_0 cluster is close to Speaker A
+        assert report["similarity"]["spk_0"]["Speaker A"] > 0.8
+
+        # Decisions
+        assert report["decisions"]["spk_0"]["assigned"] is True
+        assert report["decisions"]["spk_0"]["reason"] == "ok"
+        assert report["decisions"]["spk_0"]["mapped_to"] == "spk_0"
+        assert report["decisions"]["spk_1"]["assigned"] is True
+
+        # Final mapping
+        assert report["final_mapping"] == mapping
+
+    def test_report_unassigned_below_threshold(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"c0": [0.0, 1.0, 0.0]}  # orthogonal
+        mapping = {}  # nothing assigned
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping=mapping, profile_name="test",
+        )
+        assert report["decisions"]["c0"]["assigned"] is False
+        assert report["decisions"]["c0"]["reason"] == "below_threshold"
+
+    def test_report_unassigned_below_margin(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0], "Speaker B": [0.0, 1.0]},
+            {"Speaker A": "spk_0", "Speaker B": "spk_1"},
+        )
+        v = [1.0 / math.sqrt(2), 1.0 / math.sqrt(2)]
+        cluster_embs = {"c0": v}
+        mapping = {}  # nothing assigned (margin fail)
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.3, margin=0.05,
+            mapping=mapping, profile_name="test",
+        )
+        assert report["decisions"]["c0"]["assigned"] is False
+        assert report["decisions"]["c0"]["reason"] == "below_margin"
+
+    def test_debug_prints_when_enabled(self, capsys):
+        cluster_embs, profile, mapping = self._setup()
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping=mapping, profile_name="my_clinic",
+        )
+        print_calibration_debug(report)
+        captured = capsys.readouterr().out
+        assert "[CAL] Profile: my_clinic" in captured
+        assert "threshold=0.7" in captured
+        assert "ASSIGNED" in captured
+        assert "mapping:" in captured
+
+    def test_debug_shows_not_assigned(self, capsys):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"c0": [0.0, 1.0, 0.0]}
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping={}, profile_name="test",
+        )
+        print_calibration_debug(report)
+        captured = capsys.readouterr().out
+        assert "NOT ASSIGNED" in captured
+
+    def test_config_calibration_debug_default(self):
+        cfg = DiarizationConfig()
+        assert cfg.calibration_debug is False
+
+    def test_config_calibration_debug_yaml(self):
+        cfg = _build_diarization({"calibration_debug": True})
+        assert cfg.calibration_debug is True
+
+    def test_calibration_debug_cli_flag(self):
+        parser = build_arg_parser()
+        args = parser.parse_args(["--calibration-debug"])
+        assert args.calibration_debug is True
+
+    def test_calibration_debug_cli_default(self):
+        parser = build_arg_parser()
+        args = parser.parse_args([])
+        assert args.calibration_debug is False

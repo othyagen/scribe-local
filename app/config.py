@@ -44,6 +44,7 @@ class DiarizationConfig:
     calibration_profile: Optional[str] = None
     calibration_similarity_threshold: float = 0.72
     calibration_similarity_margin: float = 0.05
+    calibration_debug: bool = False
 
 
 @dataclass
@@ -123,6 +124,7 @@ def _build_diarization(d: dict) -> DiarizationConfig:
         calibration_similarity_margin=d.get(
             "calibration_similarity_margin", 0.05
         ),
+        calibration_debug=d.get("calibration_debug", False),
     )
 
 
@@ -150,6 +152,8 @@ def apply_cli_overrides(config: AppConfig, args: argparse.Namespace) -> AppConfi
         config.vad.short_silence_sec = args.vad_short_silence
     if args.vad_long_silence is not None:
         config.vad.long_silence_sec = args.vad_long_silence
+    if getattr(args, "calibration_debug", False):
+        config.diarization.calibration_debug = True
     return config
 
 
@@ -204,4 +208,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Number of speakers to record (default: 2)")
     p.add_argument("--profile-duration", type=float, default=12.0,
                     help="Recording duration per speaker in seconds (default: 12)")
+
+    # Calibration diagnostics
+    p.add_argument("--calibration-debug", action="store_true", default=False,
+                    help="Print calibration diagnostics and write report file")
     return p

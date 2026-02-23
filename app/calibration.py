@@ -13,6 +13,9 @@ import numpy as np
 
 from app.config import AppConfig
 
+# Module-level singleton for pyannote Inference model (lazy-init)
+_EMBED_INFERENCE = None
+
 
 def load_profile(profile_path: str) -> dict:
     """Load a calibration profile from a JSON file.
@@ -292,17 +295,33 @@ def print_calibration_debug(report: dict) -> None:
     print(f"[CAL] mapping: {json.dumps(report['final_mapping'])}")
 
 
-def embed_turns(turns: list[dict], wav_path: str | Path) -> list[dict]:
+def _get_inference():
+    """Return a cached pyannote Inference model (singleton)."""
+    global _EMBED_INFERENCE
+    if _EMBED_INFERENCE is None:
+        from pyannote.audio import Inference
+        _EMBED_INFERENCE = Inference("pyannote/embedding", use_auth_token=True)
+    return _EMBED_INFERENCE
+
+
+def embed_turns(
+    turns: list[dict],
+    wav_path: str | Path,
+    min_duration_sec: float = 0.0,
+) -> list[dict]:
     """Attach speaker embeddings to diarization turns.
 
-    Loads the session WAV, creates a pyannote Inference model once,
+    Loads the session WAV, obtains a cached pyannote Inference model,
     and for each turn slices the audio, extracts an L2-normalised
     embedding, and sets ``turn["embedding"]``.
+
+    Turns shorter than *min_duration_sec* are skipped (no embedding
+    attached), which causes ``build_cluster_embeddings`` to naturally
+    ignore them.
 
     Returns the same list (mutated in place for efficiency).
     """
     import torch
-    from pyannote.audio import Inference
 
     wav_path = Path(wav_path)
     with wave.open(str(wav_path), "rb") as wf:
@@ -311,9 +330,12 @@ def embed_turns(turns: list[dict], wav_path: str | Path) -> list[dict]:
     samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32767
     n_samples = len(samples)
 
-    inference = Inference("pyannote/embedding", use_auth_token=True)
+    inference = _get_inference()
 
     for turn in turns:
+        duration = turn["end"] - turn["start"]
+        if duration < min_duration_sec:
+            continue
         start_idx = max(0, int(round(turn["start"] * sample_rate)))
         end_idx = min(n_samples, int(round(turn["end"] * sample_rate)))
         segment = samples[start_idx:end_idx]

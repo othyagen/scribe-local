@@ -45,6 +45,7 @@ class DiarizationConfig:
     calibration_similarity_threshold: float = 0.72
     calibration_similarity_margin: float = 0.05
     calibration_debug: bool = False
+    calibration_min_turn_duration_sec: float = 0.0
 
 
 @dataclass
@@ -125,6 +126,9 @@ def _build_diarization(d: dict) -> DiarizationConfig:
             "calibration_similarity_margin", 0.05
         ),
         calibration_debug=d.get("calibration_debug", False),
+        calibration_min_turn_duration_sec=d.get(
+            "calibration_min_turn_duration_sec", 0.0
+        ),
     )
 
 

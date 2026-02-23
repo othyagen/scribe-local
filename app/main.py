@@ -378,7 +378,10 @@ def run(config: AppConfig, args: object = None) -> None:
                 with open(diar_path, encoding="utf-8") as f:
                     diar_data = json.load(f)
                 print(f"[{_ts()}] Extracting per-turn embeddings...")
-                embed_turns(diar_data["turns"], wav_path)
+                embed_turns(
+                    diar_data["turns"], wav_path,
+                    min_duration_sec=config.diarization.calibration_min_turn_duration_sec,
+                )
                 cluster_embs = build_cluster_embeddings(diar_data["turns"])
                 mapping = assign_clusters_to_profile(
                     cluster_embs,

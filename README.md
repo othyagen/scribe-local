@@ -403,6 +403,17 @@ Example console output:
 
 This can also be enabled via config YAML (`diarization.calibration_debug: true`).
 
+### Calibration performance tuning
+
+To reduce embedding compute time, very short diarization turns can be skipped during calibration. Skipped turns receive no embedding and are excluded from cluster means, but still appear in the output with their original speaker ID.
+
+```yaml
+diarization:
+  calibration_min_turn_duration_sec: 0.5  # skip turns < 0.5s (default: 0.0 = embed all)
+```
+
+The pyannote embedding model is cached as a module-level singleton, so it is loaded only once per process even if calibration runs multiple times.
+
 ### Lexicons
 
 Lexicons live in `resources/lexicons/<language>/`:
@@ -482,7 +493,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-176 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
+181 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

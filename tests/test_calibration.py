@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+import app.calibration as _cal_module
 from app.calibration import (
     apply_cluster_override,
     assign_clusters_to_profile,
@@ -327,6 +328,10 @@ def _write_wav(path, samples: np.ndarray, sample_rate: int = 16000):
 
 
 class TestEmbedTurns:
+    def setup_method(self):
+        """Reset the singleton Inference cache between tests."""
+        _cal_module._EMBED_INFERENCE = None
+
     def _mock_modules(self, mock_inference_cls):
         """Return a dict suitable for patching sys.modules with pyannote + torch."""
         mock_torch = MagicMock()
@@ -400,6 +405,67 @@ class TestEmbedTurns:
             result = embed_turns(turns, wav_path)
 
         assert "embedding" in result[0]
+
+    def test_singleton_across_calls(self, tmp_path):
+        """Inference constructor is called once even across two embed_turns calls."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(32000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([1.0, 0.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns1 = [{"start": 0.0, "end": 1.0, "speaker": "spk_0"}]
+        turns2 = [{"start": 0.0, "end": 1.0, "speaker": "spk_1"}]
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            embed_turns(turns1, wav_path)
+            embed_turns(turns2, wav_path)
+
+        mock_cls.assert_called_once()
+
+    def test_min_duration_skips_short_turns(self, tmp_path):
+        """Turns shorter than min_duration_sec get no embedding."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(32000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([1.0, 0.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns = [
+            {"start": 0.0, "end": 0.2, "speaker": "spk_0"},  # 0.2s < 0.5
+            {"start": 0.5, "end": 1.5, "speaker": "spk_1"},  # 1.0s >= 0.5
+        ]
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            result = embed_turns(turns, wav_path, min_duration_sec=0.5)
+
+        assert "embedding" not in result[0]
+        assert "embedding" in result[1]
+
+    def test_min_duration_zero_embeds_all(self, tmp_path):
+        """Default min_duration_sec=0.0 embeds every turn."""
+        wav_path = tmp_path / "audio.wav"
+        audio = np.zeros(32000, dtype=np.float32)
+        _write_wav(wav_path, audio)
+
+        fake_emb = np.array([1.0, 0.0])
+        mock_inf = MagicMock(return_value=fake_emb)
+        mock_cls = MagicMock(return_value=mock_inf)
+
+        turns = [
+            {"start": 0.0, "end": 0.05, "speaker": "spk_0"},  # very short
+            {"start": 0.1, "end": 1.0, "speaker": "spk_1"},
+        ]
+
+        with patch.dict("sys.modules", self._mock_modules(mock_cls)):
+            result = embed_turns(turns, wav_path, min_duration_sec=0.0)
+
+        assert "embedding" in result[0]
+        assert "embedding" in result[1]
 
 
 # ── calibration pipeline integration ─────────────────────────────────
@@ -678,3 +744,11 @@ class TestCalibrationDiagnostics:
         parser = build_arg_parser()
         args = parser.parse_args([])
         assert args.calibration_debug is False
+
+    def test_config_min_turn_duration_default(self):
+        cfg = DiarizationConfig()
+        assert cfg.calibration_min_turn_duration_sec == 0.0
+
+    def test_config_min_turn_duration_yaml(self):
+        cfg = _build_diarization({"calibration_min_turn_duration_sec": 0.5})
+        assert cfg.calibration_min_turn_duration_sec == 0.5

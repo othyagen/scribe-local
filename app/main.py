@@ -365,7 +365,9 @@ def run(config: AppConfig, args: object = None) -> None:
         if diar_path and config.diarization.calibration_profile:
             from app.calibration import (
                 embed_turns, load_profile,
-                build_cluster_embeddings, assign_clusters_to_profile,
+                build_cluster_embeddings_with_stats,
+                filter_eligible_clusters,
+                assign_clusters_to_profile,
                 apply_cluster_override,
                 build_calibration_report, print_calibration_debug,
             )
@@ -382,19 +384,35 @@ def run(config: AppConfig, args: object = None) -> None:
                     diar_data["turns"], wav_path,
                     min_duration_sec=config.diarization.calibration_min_turn_duration_sec,
                 )
-                cluster_embs = build_cluster_embeddings(diar_data["turns"])
+                cluster_embs, cluster_stats = build_cluster_embeddings_with_stats(
+                    diar_data["turns"]
+                )
+                eligible_embs, ineligible_reasons = filter_eligible_clusters(
+                    cluster_embs, cluster_stats,
+                    min_cluster_turns=config.diarization.calibration_min_cluster_turns,
+                    min_cluster_voiced_sec=config.diarization.calibration_min_cluster_voiced_sec,
+                )
                 mapping = assign_clusters_to_profile(
-                    cluster_embs,
+                    eligible_embs,
                     profile,
                     config.diarization.calibration_similarity_threshold,
                     config.diarization.calibration_similarity_margin,
                 )
+                allow_partial = config.diarization.calibration_allow_partial_assignment
+                eligible_ids = set(eligible_embs.keys())
+                partial_applied = None
+                if not allow_partial and eligible_ids:
+                    unassigned = eligible_ids - set(mapping.keys())
+                    partial_applied = len(unassigned) == 0
                 # Diagnostics report
                 cal_report = build_calibration_report(
                     cluster_embs, profile,
                     config.diarization.calibration_similarity_threshold,
                     config.diarization.calibration_similarity_margin,
                     mapping, config.diarization.calibration_profile,
+                    cluster_stats=cluster_stats,
+                    ineligible_reasons=ineligible_reasons,
+                    partial_assignment_applied=partial_applied,
                 )
                 if config.diarization.calibration_debug:
                     print_calibration_debug(cal_report)
@@ -403,7 +421,9 @@ def run(config: AppConfig, args: object = None) -> None:
                     json.dump(cal_report, f, ensure_ascii=False, indent=2)
 
                 diar_data["turns"] = apply_cluster_override(
-                    diar_data["turns"], mapping
+                    diar_data["turns"], mapping,
+                    eligible_cluster_ids=eligible_ids,
+                    allow_partial=allow_partial,
                 )
                 # Strip embeddings before writing
                 for t in diar_data["turns"]:

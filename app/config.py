@@ -46,6 +46,9 @@ class DiarizationConfig:
     calibration_similarity_margin: float = 0.05
     calibration_debug: bool = False
     calibration_min_turn_duration_sec: float = 0.0
+    calibration_min_cluster_turns: int = 0
+    calibration_min_cluster_voiced_sec: float = 0.0
+    calibration_allow_partial_assignment: bool = True
 
 
 @dataclass
@@ -128,6 +131,15 @@ def _build_diarization(d: dict) -> DiarizationConfig:
         calibration_debug=d.get("calibration_debug", False),
         calibration_min_turn_duration_sec=d.get(
             "calibration_min_turn_duration_sec", 0.0
+        ),
+        calibration_min_cluster_turns=d.get(
+            "calibration_min_cluster_turns", 0
+        ),
+        calibration_min_cluster_voiced_sec=d.get(
+            "calibration_min_cluster_voiced_sec", 0.0
+        ),
+        calibration_allow_partial_assignment=d.get(
+            "calibration_allow_partial_assignment", True
         ),
     )
 

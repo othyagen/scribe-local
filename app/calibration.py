@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
 import math
+import os
 import time
 import wave
 from pathlib import Path
@@ -115,6 +117,71 @@ def build_cluster_embeddings(turns: list[dict]) -> dict[str, list[float]]:
     return result
 
 
+def build_cluster_embeddings_with_stats(
+    turns: list[dict],
+) -> tuple[dict[str, list[float]], dict[str, dict]]:
+    """Compute cluster embeddings and per-cluster statistics.
+
+    Returns ``(cluster_embs, cluster_stats)`` where *cluster_stats* maps
+    each speaker id to ``{"embedded_turn_count": int, "embedded_total_sec": float}``.
+    """
+    cluster_emb_lists: dict[str, list[list[float]]] = {}
+    cluster_durations: dict[str, list[float]] = {}
+
+    for turn in turns:
+        spk = turn["speaker"]
+        if "embedding" not in turn:
+            continue
+        cluster_emb_lists.setdefault(spk, []).append(turn["embedding"])
+        cluster_durations.setdefault(spk, []).append(turn["end"] - turn["start"])
+
+    cluster_embs: dict[str, list[float]] = {}
+    cluster_stats: dict[str, dict] = {}
+    for spk, embs in cluster_emb_lists.items():
+        if not embs:
+            continue
+        mean = [sum(col) / len(col) for col in zip(*embs)]
+        norm = math.sqrt(sum(x * x for x in mean))
+        if norm > 0:
+            mean = [x / norm for x in mean]
+        cluster_embs[spk] = mean
+        cluster_stats[spk] = {
+            "embedded_turn_count": len(embs),
+            "embedded_total_sec": round(sum(cluster_durations[spk]), 3),
+        }
+
+    return cluster_embs, cluster_stats
+
+
+def filter_eligible_clusters(
+    cluster_embs: dict[str, list[float]],
+    cluster_stats: dict[str, dict],
+    min_cluster_turns: int = 0,
+    min_cluster_voiced_sec: float = 0.0,
+) -> tuple[dict[str, list[float]], dict[str, str]]:
+    """Filter clusters by eligibility criteria.
+
+    Returns ``(eligible_embs, ineligible_reasons)`` where
+    *ineligible_reasons* maps excluded cluster IDs to their reason string.
+    """
+    eligible: dict[str, list[float]] = {}
+    ineligible: dict[str, str] = {}
+
+    for cid, emb in cluster_embs.items():
+        stats = cluster_stats.get(cid, {})
+        count = stats.get("embedded_turn_count", 0)
+        voiced = stats.get("embedded_total_sec", 0.0)
+
+        if min_cluster_turns > 0 and count < min_cluster_turns:
+            ineligible[cid] = "ineligible_too_few_turns"
+        elif min_cluster_voiced_sec > 0 and voiced < min_cluster_voiced_sec:
+            ineligible[cid] = "ineligible_too_little_voiced_sec"
+        else:
+            eligible[cid] = emb
+
+    return eligible, ineligible
+
+
 def assign_clusters_to_profile(
     cluster_embs: dict[str, list[float]],
     profile: dict,
@@ -188,11 +255,21 @@ def assign_clusters_to_profile(
 def apply_cluster_override(
     turns: list[dict],
     mapping: dict[str, str],
+    eligible_cluster_ids: set[str] | None = None,
+    allow_partial: bool = True,
 ) -> list[dict]:
     """Override ``turn["speaker"]`` using a cluster→profile mapping.
 
+    If *allow_partial* is False and not all eligible clusters are assigned,
+    returns a deep copy with no overrides applied.
+
     Returns a new list — does not mutate *turns*.
     """
+    if not allow_partial and eligible_cluster_ids is not None:
+        unassigned = eligible_cluster_ids - set(mapping.keys())
+        if unassigned:
+            return copy.deepcopy(turns)
+
     result = copy.deepcopy(turns)
     for turn in result:
         mapped = mapping.get(turn["speaker"])
@@ -208,6 +285,9 @@ def build_calibration_report(
     margin: float,
     mapping: dict[str, str],
     profile_name: str,
+    cluster_stats: dict[str, dict] | None = None,
+    ineligible_reasons: dict[str, str] | None = None,
+    partial_assignment_applied: bool | None = None,
 ) -> dict:
     """Build a calibration diagnostics report.
 
@@ -217,12 +297,16 @@ def build_calibration_report(
     """
     speakers = profile.get("speakers", {})
     id_map = profile.get("speaker_id_map", {})
-    cluster_ids = sorted(cluster_embs.keys())
+    if ineligible_reasons is None:
+        ineligible_reasons = {}
+    all_cluster_ids = sorted(set(cluster_embs.keys()) | set(ineligible_reasons.keys()))
     profile_names = sorted(speakers.keys())
 
-    # Similarity matrix
+    # Similarity matrix (only for clusters that have embeddings)
     similarity: dict[str, dict[str, float]] = {}
-    for cid in cluster_ids:
+    for cid in all_cluster_ids:
+        if cid not in cluster_embs:
+            continue
         similarity[cid] = {}
         for pname in profile_names:
             similarity[cid][pname] = round(
@@ -232,8 +316,22 @@ def build_calibration_report(
 
     # Per-cluster decisions
     decisions: dict[str, dict] = {}
-    for cid in cluster_ids:
-        scores = similarity[cid]
+    for cid in all_cluster_ids:
+        decision: dict = {}
+
+        # Add cluster stats if available
+        if cluster_stats and cid in cluster_stats:
+            decision["turn_count"] = cluster_stats[cid]["embedded_turn_count"]
+            decision["voiced_sec"] = cluster_stats[cid]["embedded_total_sec"]
+
+        # Ineligible clusters
+        if cid in ineligible_reasons:
+            decision["assigned"] = False
+            decision["reason"] = ineligible_reasons[cid]
+            decisions[cid] = decision
+            continue
+
+        scores = similarity.get(cid, {})
         if not scores:
             continue
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -249,7 +347,7 @@ def build_calibration_report(
         else:
             reason = "below_margin"
 
-        decision: dict = {
+        decision.update({
             "best": best_name,
             "best_score": best_score,
             "second": second_name,
@@ -257,22 +355,25 @@ def build_calibration_report(
             "margin": gap if second_name else None,
             "assigned": assigned,
             "reason": reason,
-        }
+        })
         if assigned:
             decision["mapped_to"] = mapping[cid]
         decisions[cid] = decision
 
-    return {
+    report: dict = {
         "profile_name": profile_name,
         "threshold": threshold,
         "margin_required": margin,
-        "clusters": cluster_ids,
+        "clusters": all_cluster_ids,
         "profile_speakers": profile_names,
         "profile_speaker_id_map": {k: v for k, v in id_map.items() if k in profile_names},
         "similarity": similarity,
         "decisions": decisions,
         "final_mapping": mapping,
     }
+    if partial_assignment_applied is not None:
+        report["partial_assignment_applied"] = partial_assignment_applied
+    return report
 
 
 def print_calibration_debug(report: dict) -> None:
@@ -295,13 +396,58 @@ def print_calibration_debug(report: dict) -> None:
     print(f"[CAL] mapping: {json.dumps(report['final_mapping'])}")
 
 
+def _build_auth_kwargs(cls_or_fn) -> dict:
+    """Detect which auth keyword *cls_or_fn* accepts and return kwargs.
+
+    Inspects the callable's signature for known HuggingFace token
+    parameter names.  Returns an empty dict when HF_TOKEN is unset or
+    the callable accepts none of the known names.
+    """
+    hf_token = os.getenv("HF_TOKEN")
+    if not hf_token:
+        return {}
+    try:
+        sig = inspect.signature(cls_or_fn)
+    except (ValueError, TypeError):
+        return {}
+    for candidate in ("token", "use_auth_token", "auth_token", "hf_token"):
+        if candidate in sig.parameters:
+            return {candidate: hf_token}
+    return {}
+
+
+def _load_embedding_model():
+    """Load the pyannote embedding model via Model.from_pretrained."""
+    from pyannote.audio import Model
+
+    return Model.from_pretrained(
+        "pyannote/embedding", **_build_auth_kwargs(Model.from_pretrained)
+    )
+
+
 def _get_inference():
     """Return a cached pyannote Inference model (singleton)."""
     global _EMBED_INFERENCE
     if _EMBED_INFERENCE is None:
         from pyannote.audio import Inference
-        _EMBED_INFERENCE = Inference("pyannote/embedding", use_auth_token=True)
+
+        model = _load_embedding_model()
+        _EMBED_INFERENCE = Inference(model)
     return _EMBED_INFERENCE
+
+
+def _unwrap_embedding(raw) -> np.ndarray:
+    """Convert pyannote inference output to a 1-D numpy embedding vector.
+
+    Handles SlidingWindowFeature (has ``.data``), plain numpy arrays,
+    and torch tensors.  If the result is 2-D (frames × dim), mean-pool
+    across frames to produce a single vector.
+    """
+    arr = raw.data if hasattr(raw, "data") else raw
+    arr = np.asarray(arr, dtype=np.float64)
+    if arr.ndim == 2:
+        arr = arr.mean(axis=0)
+    return arr
 
 
 def embed_turns(
@@ -341,10 +487,11 @@ def embed_turns(
         segment = samples[start_idx:end_idx]
         waveform = torch.from_numpy(segment).unsqueeze(0).float()
         raw = inference({"waveform": waveform, "sample_rate": sample_rate})
-        norm = float(np.linalg.norm(raw))
+        vec = _unwrap_embedding(raw)
+        norm = float(np.linalg.norm(vec))
         if norm > 0:
-            raw = raw / norm
-        turn["embedding"] = raw.tolist()
+            vec = vec / norm
+        turn["embedding"] = vec.tolist()
 
     return turns
 
@@ -358,14 +505,16 @@ def extract_embedding(audio: np.ndarray, sample_rate: int) -> list[float]:
     import torch
     from pyannote.audio import Inference
 
-    inference = Inference("pyannote/embedding", use_auth_token=True)
+    model = _load_embedding_model()
+    inference = Inference(model)
     waveform = torch.from_numpy(audio).unsqueeze(0).float()
-    embedding = inference({"waveform": waveform, "sample_rate": sample_rate})
+    raw = inference({"waveform": waveform, "sample_rate": sample_rate})
+    vec = _unwrap_embedding(raw)
     # L2-normalize
-    norm = float(np.linalg.norm(embedding))
+    norm = float(np.linalg.norm(vec))
     if norm > 0:
-        embedding = embedding / norm
-    return embedding.tolist()
+        vec = vec / norm
+    return vec.tolist()
 
 
 def record_and_build_profile(

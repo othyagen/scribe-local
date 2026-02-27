@@ -414,6 +414,27 @@ diarization:
 
 The pyannote embedding model is cached as a module-level singleton, so it is loaded only once per process even if calibration runs multiple times.
 
+### Calibration robustness guards
+
+Three opt-in guards filter out unreliable clusters before calibration assignment. All are disabled by default (no behavior change unless explicitly configured).
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `diarization.calibration_min_cluster_turns` | `0` | Clusters with fewer embedded turns than this are excluded from assignment |
+| `diarization.calibration_min_cluster_voiced_sec` | `0.0` | Clusters with less total embedded duration (seconds) than this are excluded |
+| `diarization.calibration_allow_partial_assignment` | `true` | When `false`, no overrides are applied unless *all* eligible clusters get assigned |
+
+Ineligible clusters keep their original `spk_N` IDs. When `allow_partial_assignment` is `false` and assignment is incomplete, all clusters keep their original IDs — this prevents half-mapped results in ambiguous sessions.
+
+The calibration report (`calibration_report.json`) includes per-cluster stats (`turn_count`, `voiced_sec`), ineligibility reasons, and whether partial assignment was applied.
+
+```yaml
+diarization:
+  calibration_min_cluster_turns: 3        # require at least 3 embedded turns
+  calibration_min_cluster_voiced_sec: 2.0  # require at least 2s of voiced audio
+  calibration_allow_partial_assignment: false  # all-or-nothing assignment
+```
+
 ### Lexicons
 
 Lexicons live in `resources/lexicons/<language>/`:
@@ -493,7 +514,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-181 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
+197 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

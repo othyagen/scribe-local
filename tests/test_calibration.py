@@ -12,15 +12,22 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+import inspect
+
 import app.calibration as _cal_module
 from app.calibration import (
+    _build_auth_kwargs,
+    _load_embedding_model,
+    _unwrap_embedding,
     apply_cluster_override,
     assign_clusters_to_profile,
     build_calibration_report,
     build_cluster_embeddings,
+    build_cluster_embeddings_with_stats,
     cosine_similarity,
     embed_turns,
     extract_embedding,
+    filter_eligible_clusters,
     load_profile,
     match_turn_embeddings,
     print_calibration_debug,
@@ -218,6 +225,7 @@ class TestExtractEmbedding:
     def test_returns_normalized_vector(self):
         fake_raw = np.array([3.0, 4.0, 0.0])
 
+        mock_model = MagicMock()
         mock_inference_obj = MagicMock()
         mock_inference_obj.return_value = fake_raw
         mock_inference_cls = MagicMock(return_value=mock_inference_obj)
@@ -227,6 +235,7 @@ class TestExtractEmbedding:
 
         mock_pyannote_audio = MagicMock()
         mock_pyannote_audio.Inference = mock_inference_cls
+        mock_pyannote_audio.Model.from_pretrained.return_value = mock_model
 
         with patch.dict("sys.modules", {
             "pyannote": MagicMock(),
@@ -239,6 +248,145 @@ class TestExtractEmbedding:
         assert isinstance(result, list)
         norm = math.sqrt(sum(x * x for x in result))
         assert norm == pytest.approx(1.0, abs=0.01)
+
+
+# ── SlidingWindowFeature unwrap ───────────────────────────────────────
+
+
+class TestUnwrapEmbedding:
+    def test_unwraps_sliding_window_feature_2d(self):
+        """A 2-D .data attribute should be mean-pooled to 1-D."""
+        fake_data = np.array([[1.0, 2.0, 3.0],
+                              [3.0, 4.0, 5.0]])
+        fake_swf = MagicMock()
+        fake_swf.data = fake_data
+
+        result = _unwrap_embedding(fake_swf)
+        expected = fake_data.mean(axis=0)
+        np.testing.assert_allclose(result, expected)
+        assert result.ndim == 1
+
+    def test_plain_1d_array_passed_through(self):
+        arr = np.array([1.0, 0.0, 0.0])
+        result = _unwrap_embedding(arr)
+        np.testing.assert_allclose(result, arr)
+        assert result.ndim == 1
+
+    def test_extract_embedding_with_sliding_window(self):
+        """End-to-end: extract_embedding handles SlidingWindowFeature."""
+        fake_data = np.array([[3.0, 0.0],
+                              [5.0, 0.0]])
+        fake_swf = MagicMock()
+        fake_swf.data = fake_data
+
+        mock_model = MagicMock()
+        mock_inference_obj = MagicMock(return_value=fake_swf)
+        mock_inference_cls = MagicMock(return_value=mock_inference_obj)
+
+        mock_torch = MagicMock()
+        mock_torch.from_numpy.return_value.unsqueeze.return_value.float.return_value = "tensor"
+
+        mock_pyannote_audio = MagicMock()
+        mock_pyannote_audio.Inference = mock_inference_cls
+        mock_pyannote_audio.Model.from_pretrained.return_value = mock_model
+
+        with patch.dict("sys.modules", {
+            "pyannote": MagicMock(),
+            "pyannote.audio": mock_pyannote_audio,
+            "torch": mock_torch,
+        }):
+            result = extract_embedding(np.zeros(16000, dtype=np.float32), 16000)
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        norm = math.sqrt(sum(x * x for x in result))
+        assert norm == pytest.approx(1.0, abs=0.01)
+        # mean of [3,5]=4, mean of [0,0]=0 → normalized → [1.0, 0.0]
+        assert result[0] == pytest.approx(1.0, abs=0.01)
+        assert result[1] == pytest.approx(0.0, abs=0.01)
+
+
+# ── auth kwargs detection & model loading ────────────────────────────
+
+
+class TestBuildAuthKwargs:
+    """Ensure _build_auth_kwargs adapts to different pyannote signatures."""
+
+    @staticmethod
+    def _make_callable(param_name):
+        """Build a real callable whose signature accepts *param_name*."""
+        ns: dict = {}
+        exec(
+            f"def _fn(model_id, *, {param_name}=None): pass\n",
+            ns,
+        )
+        return ns["_fn"]
+
+    def test_detects_token_param(self):
+        fn = self._make_callable("token")
+        with patch.dict(os.environ, {"HF_TOKEN": "hf_abc"}):
+            assert _build_auth_kwargs(fn) == {"token": "hf_abc"}
+
+    def test_detects_use_auth_token_param(self):
+        fn = self._make_callable("use_auth_token")
+        with patch.dict(os.environ, {"HF_TOKEN": "hf_xyz"}):
+            assert _build_auth_kwargs(fn) == {"use_auth_token": "hf_xyz"}
+
+    def test_detects_auth_token_param(self):
+        fn = self._make_callable("auth_token")
+        with patch.dict(os.environ, {"HF_TOKEN": "hf_123"}):
+            assert _build_auth_kwargs(fn) == {"auth_token": "hf_123"}
+
+    def test_no_matching_param_returns_empty(self):
+        fn = self._make_callable("unrelated_param")
+        with patch.dict(os.environ, {"HF_TOKEN": "hf_nope"}):
+            assert _build_auth_kwargs(fn) == {}
+
+    def test_no_hf_token_returns_empty(self):
+        fn = self._make_callable("token")
+        env = os.environ.copy()
+        env.pop("HF_TOKEN", None)
+        with patch.dict(os.environ, env, clear=True):
+            assert _build_auth_kwargs(fn) == {}
+
+
+class TestLoadEmbeddingModel:
+    """Ensure _load_embedding_model uses Model.from_pretrained, not a string."""
+
+    def test_uses_model_from_pretrained(self):
+        mock_model = MagicMock()
+        mock_pyannote_audio = MagicMock()
+        mock_pyannote_audio.Model.from_pretrained.return_value = mock_model
+
+        with patch.dict("sys.modules", {
+            "pyannote": MagicMock(),
+            "pyannote.audio": mock_pyannote_audio,
+        }), patch.dict(os.environ, {"HF_TOKEN": "hf_test"}):
+            result = _load_embedding_model()
+
+        assert result is mock_model
+        mock_pyannote_audio.Model.from_pretrained.assert_called_once()
+        call_args = mock_pyannote_audio.Model.from_pretrained.call_args
+        assert call_args[0][0] == "pyannote/embedding"
+
+    def test_inference_receives_model_object_not_string(self):
+        mock_model = MagicMock()
+        mock_inference_obj = MagicMock()
+        mock_inference_cls = MagicMock(return_value=mock_inference_obj)
+        mock_pyannote_audio = MagicMock()
+        mock_pyannote_audio.Inference = mock_inference_cls
+        mock_pyannote_audio.Model.from_pretrained.return_value = mock_model
+
+        _cal_module._EMBED_INFERENCE = None
+        with patch.dict("sys.modules", {
+            "pyannote": MagicMock(),
+            "pyannote.audio": mock_pyannote_audio,
+        }), patch.dict(os.environ, {"HF_TOKEN": "hf_test"}):
+            _cal_module._get_inference()
+
+        # Inference must receive the model object, not a string
+        mock_inference_cls.assert_called_once_with(mock_model)
+        _cal_module._EMBED_INFERENCE = None
 
 
 # ── record and build profile ─────────────────────────────────────────
@@ -752,3 +900,225 @@ class TestCalibrationDiagnostics:
     def test_config_min_turn_duration_yaml(self):
         cfg = _build_diarization({"calibration_min_turn_duration_sec": 0.5})
         assert cfg.calibration_min_turn_duration_sec == 0.5
+
+
+# ── robustness guards (Phase 2F) ─────────────────────────────────────
+
+
+class TestRobustnessGuards:
+    def test_config_defaults_disabled(self):
+        cfg = DiarizationConfig()
+        assert cfg.calibration_min_cluster_turns == 0
+        assert cfg.calibration_min_cluster_voiced_sec == 0.0
+        assert cfg.calibration_allow_partial_assignment is True
+
+    def test_config_yaml_overrides(self):
+        cfg = _build_diarization({
+            "calibration_min_cluster_turns": 3,
+            "calibration_min_cluster_voiced_sec": 2.0,
+            "calibration_allow_partial_assignment": False,
+        })
+        assert cfg.calibration_min_cluster_turns == 3
+        assert cfg.calibration_min_cluster_voiced_sec == 2.0
+        assert cfg.calibration_allow_partial_assignment is False
+
+
+class TestBuildClusterEmbeddingsWithStats:
+    def test_returns_stats(self):
+        turns = [
+            _turn(0.0, 1.0, "spk_0", embedding=[1.0, 0.0]),
+            _turn(1.0, 3.0, "spk_0", embedding=[0.0, 1.0]),
+            _turn(3.0, 5.0, "spk_1", embedding=[0.0, 0.0]),
+        ]
+        embs, stats = build_cluster_embeddings_with_stats(turns)
+        assert "spk_0" in embs
+        assert stats["spk_0"]["embedded_turn_count"] == 2
+        assert stats["spk_0"]["embedded_total_sec"] == pytest.approx(3.0)
+        assert stats["spk_1"]["embedded_turn_count"] == 1
+        assert stats["spk_1"]["embedded_total_sec"] == pytest.approx(2.0)
+
+    def test_skips_turns_without_embedding(self):
+        turns = [
+            _turn(0.0, 1.0, "spk_0", embedding=[1.0, 0.0]),
+            _turn(1.0, 2.0, "spk_0"),  # no embedding
+        ]
+        embs, stats = build_cluster_embeddings_with_stats(turns)
+        assert stats["spk_0"]["embedded_turn_count"] == 1
+
+    def test_embedding_normalized(self):
+        turns = [
+            _turn(0.0, 1.0, "spk_0", embedding=[3.0, 4.0]),
+            _turn(1.0, 2.0, "spk_0", embedding=[4.0, 3.0]),
+        ]
+        embs, _ = build_cluster_embeddings_with_stats(turns)
+        norm = math.sqrt(sum(x * x for x in embs["spk_0"]))
+        assert norm == pytest.approx(1.0, abs=1e-6)
+
+
+class TestFilterEligibleClusters:
+    def test_ineligible_too_few_turns(self):
+        cluster_embs = {"spk_0": [1.0, 0.0], "spk_1": [0.0, 1.0]}
+        stats = {
+            "spk_0": {"embedded_turn_count": 1, "embedded_total_sec": 5.0},
+            "spk_1": {"embedded_turn_count": 3, "embedded_total_sec": 5.0},
+        }
+        eligible, reasons = filter_eligible_clusters(
+            cluster_embs, stats, min_cluster_turns=2
+        )
+        assert "spk_0" not in eligible
+        assert "spk_1" in eligible
+        assert reasons["spk_0"] == "ineligible_too_few_turns"
+
+    def test_ineligible_too_little_voiced_sec(self):
+        cluster_embs = {"spk_0": [1.0, 0.0], "spk_1": [0.0, 1.0]}
+        stats = {
+            "spk_0": {"embedded_turn_count": 5, "embedded_total_sec": 0.5},
+            "spk_1": {"embedded_turn_count": 5, "embedded_total_sec": 3.0},
+        }
+        eligible, reasons = filter_eligible_clusters(
+            cluster_embs, stats, min_cluster_voiced_sec=1.0
+        )
+        assert "spk_0" not in eligible
+        assert "spk_1" in eligible
+        assert reasons["spk_0"] == "ineligible_too_little_voiced_sec"
+
+    def test_all_eligible_when_disabled(self):
+        cluster_embs = {"spk_0": [1.0, 0.0], "spk_1": [0.0, 1.0]}
+        stats = {
+            "spk_0": {"embedded_turn_count": 1, "embedded_total_sec": 0.1},
+            "spk_1": {"embedded_turn_count": 1, "embedded_total_sec": 0.1},
+        }
+        eligible, reasons = filter_eligible_clusters(
+            cluster_embs, stats, min_cluster_turns=0, min_cluster_voiced_sec=0.0
+        )
+        assert len(eligible) == 2
+        assert reasons == {}
+
+
+class TestAllowPartialAssignment:
+    def test_partial_true_applies_subset(self):
+        """allow_partial=True overrides only assigned clusters."""
+        turns = [
+            _turn(0.0, 1.0, "spk_0"),
+            _turn(1.0, 2.0, "spk_1"),
+        ]
+        mapping = {"spk_0": "spk_0"}  # only spk_0 assigned
+        result = apply_cluster_override(
+            turns, mapping,
+            eligible_cluster_ids={"spk_0", "spk_1"},
+            allow_partial=True,
+        )
+        assert result[0]["speaker"] == "spk_0"
+        assert result[1]["speaker"] == "spk_1"
+
+    def test_partial_false_blocks_when_incomplete(self):
+        """allow_partial=False returns unchanged turns when not all assigned."""
+        turns = [
+            _turn(0.0, 1.0, "spk_0"),
+            _turn(1.0, 2.0, "spk_1"),
+        ]
+        mapping = {"spk_0": "cal_0"}  # only 1 of 2 eligible assigned
+        result = apply_cluster_override(
+            turns, mapping,
+            eligible_cluster_ids={"spk_0", "spk_1"},
+            allow_partial=False,
+        )
+        # No overrides applied
+        assert result[0]["speaker"] == "spk_0"
+        assert result[1]["speaker"] == "spk_1"
+
+    def test_partial_false_allows_when_all_assigned(self):
+        """allow_partial=False still applies when all eligible are assigned."""
+        turns = [
+            _turn(0.0, 1.0, "spk_0"),
+            _turn(1.0, 2.0, "spk_1"),
+        ]
+        mapping = {"spk_0": "cal_0", "spk_1": "cal_1"}
+        result = apply_cluster_override(
+            turns, mapping,
+            eligible_cluster_ids={"spk_0", "spk_1"},
+            allow_partial=False,
+        )
+        assert result[0]["speaker"] == "cal_0"
+        assert result[1]["speaker"] == "cal_1"
+
+    def test_does_not_mutate_input(self):
+        turns = [_turn(0.0, 1.0, "spk_0")]
+        mapping = {"spk_0": "cal_0"}
+        original = turns[0]["speaker"]
+        apply_cluster_override(
+            turns, mapping,
+            eligible_cluster_ids={"spk_0", "spk_1"},
+            allow_partial=False,
+        )
+        assert turns[0]["speaker"] == original
+
+
+class TestReportWithRobustnessGuards:
+    def test_report_includes_cluster_stats(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"spk_0": [0.95, 0.1]}
+        stats = {"spk_0": {"embedded_turn_count": 5, "embedded_total_sec": 8.3}}
+        mapping = {"spk_0": "spk_0"}
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping=mapping, profile_name="test",
+            cluster_stats=stats,
+        )
+        assert report["decisions"]["spk_0"]["turn_count"] == 5
+        assert report["decisions"]["spk_0"]["voiced_sec"] == 8.3
+
+    def test_report_shows_ineligible_reason(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"spk_1": [0.0, 1.0]}  # only spk_1 eligible
+        stats = {
+            "spk_0": {"embedded_turn_count": 1, "embedded_total_sec": 0.2},
+            "spk_1": {"embedded_turn_count": 5, "embedded_total_sec": 3.0},
+        }
+        ineligible = {"spk_0": "ineligible_too_few_turns"}
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping={}, profile_name="test",
+            cluster_stats=stats,
+            ineligible_reasons=ineligible,
+        )
+        assert report["decisions"]["spk_0"]["assigned"] is False
+        assert report["decisions"]["spk_0"]["reason"] == "ineligible_too_few_turns"
+        assert report["decisions"]["spk_0"]["turn_count"] == 1
+        # spk_0 should not be in similarity matrix (no embedding)
+        assert "spk_0" not in report["similarity"]
+
+    def test_report_partial_assignment_field(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"spk_0": [0.95, 0.1]}
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping={"spk_0": "spk_0"}, profile_name="test",
+            partial_assignment_applied=True,
+        )
+        assert report["partial_assignment_applied"] is True
+
+    def test_report_omits_partial_field_when_none(self):
+        profile = _profile(
+            {"Speaker A": [1.0, 0.0]},
+            {"Speaker A": "spk_0"},
+        )
+        cluster_embs = {"spk_0": [0.95, 0.1]}
+        report = build_calibration_report(
+            cluster_embs, profile,
+            threshold=0.7, margin=0.05,
+            mapping={"spk_0": "spk_0"}, profile_name="test",
+        )
+        assert "partial_assignment_applied" not in report

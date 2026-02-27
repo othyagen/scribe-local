@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -47,6 +47,9 @@ class AsrResult:
     start: float   # seconds, relative to audio chunk start
     end: float     # seconds, relative to audio chunk start
     text: str
+    avg_logprob: Optional[float] = None
+    no_speech_prob: Optional[float] = None
+    compression_ratio: Optional[float] = None
 
 
 class ASREngine:
@@ -106,7 +109,12 @@ class ASREngine:
         for seg in segments:
             text = seg.text.strip()
             if text:
-                results.append(AsrResult(start=seg.start, end=seg.end, text=text))
+                results.append(AsrResult(
+                    start=seg.start, end=seg.end, text=text,
+                    avg_logprob=getattr(seg, "avg_logprob", None),
+                    no_speech_prob=getattr(seg, "no_speech_prob", None),
+                    compression_ratio=getattr(seg, "compression_ratio", None),
+                ))
         return results
 
     @property

@@ -60,6 +60,7 @@ def process_speech_buffer(
     normalizer: Normalizer,
     writer: OutputWriter,
     is_paragraph: bool,
+    confidence_entries: list[dict] | None = None,
 ) -> None:
     """Transcribe a speech buffer and commit all resulting segments."""
     audio = np.concatenate(speech_buffer)
@@ -85,6 +86,17 @@ def process_speech_buffer(
 
         # 5. Real-time display
         _display_segment(norm_seg.to_txt_line(), changes)
+
+        # 6. Accumulate confidence metrics (if tracking)
+        if confidence_entries is not None:
+            confidence_entries.append({
+                "seg_id": raw_seg.seg_id,
+                "t0": raw_seg.t0,
+                "t1": raw_seg.t1,
+                "avg_logprob": result.avg_logprob,
+                "no_speech_prob": result.no_speech_prob,
+                "compression_ratio": result.compression_ratio,
+            })
 
     if is_paragraph:
         committer.new_paragraph()
@@ -223,6 +235,7 @@ def run(config: AppConfig, args: object = None) -> None:
     silence_samples: int = 0
     currently_speaking: bool = False
     sentence_committed: bool = False
+    confidence_entries: list[dict] = []
 
     # ── start ────────────────────────────────────────────────────
     audio.start()
@@ -282,6 +295,7 @@ def run(config: AppConfig, args: object = None) -> None:
                                 normalizer,
                                 writer,
                                 is_paragraph=False,
+                                confidence_entries=confidence_entries,
                             )
                         speech_buffer = []
                         sentence_committed = True
@@ -315,6 +329,7 @@ def run(config: AppConfig, args: object = None) -> None:
                     normalizer,
                     writer,
                     is_paragraph=True,
+                    confidence_entries=confidence_entries,
                 )
 
         # Shut down audio stream (bounded timeout — won't hang)
@@ -498,6 +513,19 @@ def run(config: AppConfig, args: object = None) -> None:
                 diarized_txt, tags, config.output_dir, diar_ts
             )
 
+        # Confidence report
+        confidence_report_path = None
+        if confidence_entries:
+            from app.confidence import build_confidence_report, write_confidence_report
+            # raw filename: raw_YYYY-MM-DD_HH-MM-SS_<model>.json
+            # timestamp is chars 4..23 of the stem
+            session_ts = writer.raw_json_path.stem[4:23]
+            report = build_confidence_report(confidence_entries)
+            confidence_report_path = write_confidence_report(
+                report, config.output_dir, session_ts
+            )
+            print(f"[{_ts()}] Confidence report: {report['flagged_count']}/{report['total_count']} flagged.")
+
         print("-" * 60)
         print(f"Segments committed : {committer.seg_count}")
         print(f"RAW output         : {writer.raw_json_path}")
@@ -515,6 +543,8 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"Diarized transcript: {diarized_txt}")
         if tagged_txt:
             print(f"Tagged transcript  : {tagged_txt}")
+        if confidence_report_path:
+            print(f"Confidence report  : {confidence_report_path}")
         print("Session ended.")
 
 

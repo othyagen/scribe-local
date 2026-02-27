@@ -122,6 +122,7 @@ A session produces these files:
 | `speaker_merge_<timestamp>.json` | JSON | Speaker merge map (only when merges are applied) |
 | `speaker_tags_<timestamp>.json` | JSON | Speaker tag/label mapping |
 | `tag_labeled_<timestamp>.txt` | Plain text | Transcript with human-readable speaker tags |
+| `confidence_report_<timestamp>.json` | JSON | Per-segment ASR quality flags |
 
 ### RAW vs. NORMALIZED
 
@@ -463,6 +464,22 @@ Each file uses this format:
 
 Priority order: `custom` > `medical` > `general`. Exact matches are applied first, then fuzzy matches above the configured threshold (default: 0.92).
 
+### Confidence Report
+
+Each session produces a `confidence_report_<timestamp>.json` that flags segments with low ASR quality. This is a diagnostic-only layer — RAW and normalized outputs are never modified.
+
+Per-segment metrics from faster-whisper are checked against conservative thresholds:
+
+| Metric | Threshold | Flag |
+|--------|-----------|------|
+| `no_speech_prob` | > 0.6 | `no_speech` — segment may be silence or noise |
+| `avg_logprob` | < -1.0 | `low_confidence` — model uncertain about transcription |
+| `compression_ratio` | > 2.4 | `repetitive` — possible hallucination or repeated text |
+
+If all three metrics are missing (e.g., older faster-whisper version), the segment is flagged as `missing_metrics`. Segments with metrics within thresholds have an empty `flags` list.
+
+The report includes all segments (not just flagged ones) so users can audit thresholds. The `flagged_count` and `total_count` fields provide a quick summary.
+
 ---
 
 ## Configuration
@@ -514,7 +531,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-225 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), and end-to-end integration (full pipeline without live microphone).
+237 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

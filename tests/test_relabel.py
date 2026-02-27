@@ -151,15 +151,16 @@ class TestTxtOutput:
     def test_txt_paragraph_breaks(self, tmp_path):
         norm = _write_normalized(tmp_path, [
             _seg("seg_0001", 0.0, 3.0, para="para_0000"),
-            _seg("seg_0002", 3.0, 6.0, para="para_0000"),
-            _seg("seg_0003", 8.0, 11.0, para="para_0001"),
+            _seg("seg_0002", 5.0, 8.0, para="para_0001"),
+            _seg("seg_0003", 10.0, 13.0, para="para_0002"),
         ])
-        diar = _write_diarization(tmp_path, [_turn(0.0, 12.0, "spk_0")])
+        diar = _write_diarization(tmp_path, [_turn(0.0, 14.0, "spk_0")])
         _, txt_out = relabel_segments(norm, diar, str(tmp_path))
         content = txt_out.read_text(encoding="utf-8")
         lines = content.split("\n")
-        # Expect: line1, line2, empty line (paragraph break), line3
-        assert lines[2] == ""
+        # Expect: line1, empty (paragraph break), line2, empty (paragraph break), line3
+        assert lines[1] == ""
+        assert lines[3] == ""
 
     def test_txt_empty_segments(self, tmp_path):
         norm = _write_normalized(tmp_path, [])

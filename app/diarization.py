@@ -291,6 +291,78 @@ def apply_merge_map(
     return result
 
 
+_MIN_SEGMENT_SEC = 0.12
+
+
+def clean_diarized_segments(segments: list[dict]) -> list[dict]:
+    """Post-process relabeled segments: sort, dedup, merge, resolve overlaps.
+
+    Input dicts must have keys: seg_id, t0, t1, old_speaker_id,
+    new_speaker_id, normalized_text, paragraph_id.
+
+    Returns a new list (does not mutate input).
+    """
+    import copy
+
+    if not segments:
+        return []
+
+    segs = sorted(copy.deepcopy(segments), key=lambda s: (s["t0"], s["t1"]))
+
+    # 1. Deduplicate near-identical consecutive segments
+    deduped: list[dict] = [segs[0]]
+    for s in segs[1:]:
+        prev = deduped[-1]
+        if (
+            s["new_speaker_id"] == prev["new_speaker_id"]
+            and abs(s["t0"] - prev["t0"]) < 0.1
+            and abs(s["t1"] - prev["t1"]) < 0.1
+            and s["normalized_text"] == prev["normalized_text"]
+        ):
+            continue
+        deduped.append(s)
+
+    # 2. Merge adjacent same-speaker segments (gap <= 0.4s, total <= 30s)
+    merged: list[dict] = [deduped[0]]
+    for s in deduped[1:]:
+        prev = merged[-1]
+        gap = s["t0"] - prev["t1"]
+        combined_dur = s["t1"] - prev["t0"]
+        if (
+            s["new_speaker_id"] == prev["new_speaker_id"]
+            and s.get("paragraph_id", "") == prev.get("paragraph_id", "")
+            and gap <= 0.4
+            and gap >= 0.0
+            and combined_dur <= 30.0
+        ):
+            prev["t1"] = s["t1"]
+            prev["normalized_text"] += " " + s["normalized_text"]
+        else:
+            merged.append(s)
+
+    # 3. Resolve overlaps (strictly non-overlapping output)
+    for i in range(len(merged) - 1):
+        cur = merged[i]
+        nxt = merged[i + 1]
+        if nxt["t0"] < cur["t1"]:
+            if cur["new_speaker_id"] == nxt["new_speaker_id"]:
+                cur["t1"] = nxt["t0"]
+            else:
+                overlap = cur["t1"] - nxt["t0"]
+                if overlap < 0.2:
+                    cur["t1"] = nxt["t0"]
+                else:
+                    cur_dur = cur["t1"] - cur["t0"]
+                    nxt_dur = nxt["t1"] - nxt["t0"]
+                    if cur_dur <= nxt_dur:
+                        cur["t1"] = nxt["t0"]
+                    else:
+                        nxt["t0"] = cur["t1"]
+
+    # 4. Drop micro-segments (duration < _MIN_SEGMENT_SEC)
+    return [s for s in merged if (s["t1"] - s["t0"]) >= _MIN_SEGMENT_SEC]
+
+
 def relabel_segments(
     normalized_json_path: Path,
     diarization_json_path: Path,
@@ -341,25 +413,34 @@ def relabel_segments(
             "t1": seg_t1,
             "old_speaker_id": seg["speaker_id"],
             "new_speaker_id": new_speaker,
+            "normalized_text": seg["normalized_text"],
+            "paragraph_id": seg.get("paragraph_id", ""),
         })
+
+    relabeled = clean_diarized_segments(relabeled)
 
     # Extract timestamp from diarization filename
     ts = diarization_json_path.stem.removeprefix("diarization_")
 
+    # Write JSON (strip internal fields so output format is unchanged)
     json_out = Path(output_dir) / f"diarized_segments_{ts}.json"
+    json_data = [
+        {k: v for k, v in r.items() if k not in ("normalized_text", "paragraph_id")}
+        for r in relabeled
+    ]
     with open(json_out, "w", encoding="utf-8") as f:
-        json.dump(relabeled, f, ensure_ascii=False, indent=2)
+        json.dump(json_data, f, ensure_ascii=False, indent=2)
 
     txt_out = Path(output_dir) / f"diarized_{ts}.txt"
     last_para: str | None = None
     with open(txt_out, "w", encoding="utf-8") as f:
-        for seg, rel in zip(segments, relabeled):
-            para = seg.get("paragraph_id")
+        for rel in relabeled:
+            para = rel.get("paragraph_id", "")
             if last_para is not None and para != last_para:
                 f.write("\n")
-            ts0 = _fmt_ts(seg["t0"])
-            ts1 = _fmt_ts(seg["t1"])
-            f.write(f"[{ts0} - {ts1}] [{rel['new_speaker_id']}] {seg['normalized_text']}\n")
+            ts0 = _fmt_ts(rel["t0"])
+            ts1 = _fmt_ts(rel["t1"])
+            f.write(f"[{ts0} - {ts1}] [{rel['new_speaker_id']}] {rel['normalized_text']}\n")
             last_para = para
 
     return json_out, txt_out

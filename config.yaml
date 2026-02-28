@@ -1,3 +1,5 @@
+# See docs/CONFIG_REFERENCE.md for full parameter documentation.
+
 language: da  # da, sv, en
 
 audio:
@@ -19,16 +21,25 @@ asr:
 
 diarization:
   enabled: true
-  backend: default       # default = single speaker (spk_0), pyannote = post-session diarization
-  smoothing: true        # merge short backchannel turns after pyannote diarization
-  min_turn_sec: 0.7      # merge turns shorter than this into neighbors
-  gap_merge_sec: 0.3     # fill same-speaker gaps smaller than this
-  calibration_profile: null   # profile name from profiles/ (without .json)
-  calibration_similarity_threshold: 0.72
+  backend: pyannote     # default or pyannote
+  smoothing: true
+  min_turn_sec: 0.7     # seconds
+  gap_merge_sec: 0.3    # seconds
+  calibration_profile: test2
+  calibration_similarity_threshold: 0.72 # 0.60-0.72
+  calibration_similarity_margin: 0.05
+  # Feature flags (A/B testing)
+  calibration_enabled: true
+  overlap_stabilizer_enabled: true
+  prototype_matching_enabled: true
+  min_duration_filter_enabled: true
 
 normalization:
   enabled: true
   fuzzy_threshold: 0.92
   lexicon_dir: resources/lexicons
+
+reporting:
+  session_report_enabled: true
 
 output_dir: outputs

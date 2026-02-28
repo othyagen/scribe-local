@@ -49,6 +49,15 @@ class DiarizationConfig:
     calibration_min_cluster_turns: int = 0
     calibration_min_cluster_voiced_sec: float = 0.0
     calibration_allow_partial_assignment: bool = True
+    calibration_enabled: bool = True
+    overlap_stabilizer_enabled: bool = True
+    prototype_matching_enabled: bool = True
+    min_duration_filter_enabled: bool = True
+
+
+@dataclass
+class ReportingConfig:
+    session_report_enabled: bool = True
 
 
 @dataclass
@@ -67,6 +76,7 @@ class AppConfig:
     asr: AsrConfig = field(default_factory=AsrConfig)
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
     normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
+    reporting: ReportingConfig = field(default_factory=ReportingConfig)
 
 
 def load_config(path: str) -> AppConfig:
@@ -85,6 +95,7 @@ def _build_config(data: dict) -> AppConfig:
         asr=_build_asr(data.get("asr", {})),
         diarization=_build_diarization(data.get("diarization", {})),
         normalization=_build_normalization(data.get("normalization", {})),
+        reporting=_build_reporting(data.get("reporting", {})),
     )
 
 
@@ -141,6 +152,10 @@ def _build_diarization(d: dict) -> DiarizationConfig:
         calibration_allow_partial_assignment=d.get(
             "calibration_allow_partial_assignment", True
         ),
+        calibration_enabled=d.get("calibration_enabled", True),
+        overlap_stabilizer_enabled=d.get("overlap_stabilizer_enabled", True),
+        prototype_matching_enabled=d.get("prototype_matching_enabled", True),
+        min_duration_filter_enabled=d.get("min_duration_filter_enabled", True),
     )
 
 
@@ -149,6 +164,12 @@ def _build_normalization(d: dict) -> NormalizationConfig:
         enabled=d.get("enabled", True),
         fuzzy_threshold=d.get("fuzzy_threshold", 0.92),
         lexicon_dir=d.get("lexicon_dir", "resources/lexicons"),
+    )
+
+
+def _build_reporting(d: dict) -> ReportingConfig:
+    return ReportingConfig(
+        session_report_enabled=d.get("session_report_enabled", True),
     )
 
 

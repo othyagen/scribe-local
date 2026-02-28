@@ -548,24 +548,33 @@ def run(config: AppConfig, args: object = None) -> None:
                 print(f"[{_ts()}] Diarization failed: {e}")
 
         # Smooth diarization turns (reduce backchannel flips)
+        turns_before_smoothing = None
+        turns_after_smoothing = None
         if diar_path and config.diarization.smoothing:
             print(f"[{_ts()}] Smoothing diarization turns...")
             with open(diar_path, encoding="utf-8") as f:
                 diar_data = json.load(f)
-            original_count = len(diar_data["turns"])
+            turns_before_smoothing = len(diar_data["turns"])
             diar_data["turns"] = smooth_turns(
                 diar_data["turns"],
                 config.diarization.min_turn_sec,
                 config.diarization.gap_merge_sec,
             )
+            turns_after_smoothing = len(diar_data["turns"])
             with open(diar_path, "w", encoding="utf-8") as f:
                 json.dump(diar_data, f, ensure_ascii=False, indent=2)
-            print(f"[{_ts()}] Smoothed: {original_count} → {len(diar_data['turns'])} turns.")
+            print(f"[{_ts()}] Smoothed: {turns_before_smoothing} → {turns_after_smoothing} turns.")
 
         # Apply calibration profile (override speaker IDs from embeddings)
         calibrated_path = None
         cal_report_path = None
-        if diar_path and config.diarization.calibration_profile:
+        cal_stats: dict | None = None
+        cal_enabled = (
+            diar_path
+            and config.diarization.calibration_profile
+            and config.diarization.calibration_enabled
+        )
+        if cal_enabled:
             from app.calibration import (
                 embed_turns, load_profile,
                 detect_and_mark_overlap, MIN_PROTOTYPE_DURATION_SEC,
@@ -583,37 +592,69 @@ def run(config: AppConfig, args: object = None) -> None:
                 profile = load_profile(profile_path)
                 with open(diar_path, encoding="utf-8") as f:
                     diar_data = json.load(f)
-                diar_data["turns"] = detect_and_mark_overlap(diar_data["turns"])
+
+                # Overlap detection — gated
+                if config.diarization.overlap_stabilizer_enabled:
+                    diar_data["turns"] = detect_and_mark_overlap(diar_data["turns"])
+
+                # Embedding min duration — gated
+                if config.diarization.min_duration_filter_enabled:
+                    effective_min = max(
+                        config.diarization.calibration_min_turn_duration_sec,
+                        MIN_PROTOTYPE_DURATION_SEC,
+                    )
+                else:
+                    effective_min = config.diarization.calibration_min_turn_duration_sec
+
                 print(f"[{_ts()}] Extracting per-turn embeddings...")
                 embed_turns(
                     diar_data["turns"], wav_path,
-                    min_duration_sec=max(
-                        config.diarization.calibration_min_turn_duration_sec,
-                        MIN_PROTOTYPE_DURATION_SEC,
-                    ),
+                    min_duration_sec=effective_min,
+                )
+
+                proto_min = (
+                    MIN_PROTOTYPE_DURATION_SEC
+                    if config.diarization.min_duration_filter_enabled
+                    else 0.0
                 )
                 cluster_embs, cluster_stats = build_cluster_embeddings_with_stats(
                     diar_data["turns"],
-                    min_duration_sec=MIN_PROTOTYPE_DURATION_SEC,
+                    min_duration_sec=proto_min,
                 )
                 eligible_embs, ineligible_reasons = filter_eligible_clusters(
                     cluster_embs, cluster_stats,
                     min_cluster_turns=config.diarization.calibration_min_cluster_turns,
                     min_cluster_voiced_sec=config.diarization.calibration_min_cluster_voiced_sec,
                 )
-                mapping = assign_clusters_to_profile(
-                    eligible_embs,
-                    profile,
-                    config.diarization.calibration_similarity_threshold,
-                    config.diarization.calibration_similarity_margin,
+
+                # Collect calibration stats for session report
+                overlap_count = sum(
+                    1 for t in diar_data["turns"] if t.get("overlap")
                 )
-                allow_partial = config.diarization.calibration_allow_partial_assignment
+                emb_count = sum(
+                    1 for t in diar_data["turns"] if "embedding" in t
+                )
                 eligible_ids = set(eligible_embs.keys())
-                partial_applied = None
-                if not allow_partial and eligible_ids:
-                    unassigned = eligible_ids - set(mapping.keys())
-                    partial_applied = len(unassigned) == 0
-                # Diagnostics report
+
+                # Prototype matching — gated
+                if config.diarization.prototype_matching_enabled:
+                    mapping = assign_clusters_to_profile(
+                        eligible_embs,
+                        profile,
+                        config.diarization.calibration_similarity_threshold,
+                        config.diarization.calibration_similarity_margin,
+                    )
+                    allow_partial = config.diarization.calibration_allow_partial_assignment
+                    partial_applied = None
+                    if not allow_partial and eligible_ids:
+                        unassigned = eligible_ids - set(mapping.keys())
+                        partial_applied = len(unassigned) == 0
+                else:
+                    mapping = {}
+                    allow_partial = True
+                    partial_applied = None
+
+                # Diagnostics report (always written)
                 cal_report = build_calibration_report(
                     cluster_embs, profile,
                     config.diarization.calibration_similarity_threshold,
@@ -623,17 +664,22 @@ def run(config: AppConfig, args: object = None) -> None:
                     ineligible_reasons=ineligible_reasons,
                     partial_assignment_applied=partial_applied,
                 )
+                if not config.diarization.prototype_matching_enabled:
+                    cal_report["reason"] = "prototype_matching_disabled"
                 if config.diarization.calibration_debug:
                     print_calibration_debug(cal_report)
                 cal_report_path = diar_path.with_suffix(".calibration_report.json")
                 with open(cal_report_path, "w", encoding="utf-8") as f:
                     json.dump(cal_report, f, ensure_ascii=False, indent=2)
 
-                diar_data["turns"] = apply_cluster_override(
-                    diar_data["turns"], mapping,
-                    eligible_cluster_ids=eligible_ids,
-                    allow_partial=allow_partial,
-                )
+                # Apply overrides only when prototype matching is enabled
+                if config.diarization.prototype_matching_enabled:
+                    diar_data["turns"] = apply_cluster_override(
+                        diar_data["turns"], mapping,
+                        eligible_cluster_ids=eligible_ids,
+                        allow_partial=allow_partial,
+                    )
+
                 # Strip embeddings and overlap markers before writing
                 for t in diar_data["turns"]:
                     t.pop("embedding", None)
@@ -643,6 +689,17 @@ def run(config: AppConfig, args: object = None) -> None:
                 with open(calibrated_path, "w", encoding="utf-8") as f:
                     json.dump(diar_data, f, ensure_ascii=False, indent=2)
                 print(f"[{_ts()}] Applied calibration profile: {config.diarization.calibration_profile}")
+
+                # Stats for session report
+                assigned_count = len(mapping)
+                unknown_count = len(eligible_ids) - assigned_count
+                cal_stats = {
+                    "overlaps_marked": overlap_count,
+                    "embeddings_computed": emb_count,
+                    "clusters_total": len(cluster_embs),
+                    "clusters_assigned": assigned_count,
+                    "clusters_unknown": unknown_count,
+                }
             except FileNotFoundError as e:
                 print(f"[{_ts()}] Calibration profile not found: {e}")
             except Exception as e:
@@ -741,6 +798,42 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"Tagged transcript  : {tagged_txt}")
         if confidence_report_path:
             print(f"Confidence report  : {confidence_report_path}")
+
+        # Session report (consolidated summary)
+        session_report_path = None
+        if config.reporting.session_report_enabled:
+            from app.reporting import build_session_report, write_session_report
+            session_ts = writer.raw_json_path.stem[4:23]
+            output_paths = {
+                "raw": str(writer.raw_json_path),
+                "normalized": str(writer.normalized_json_path),
+                "changes": str(writer.changes_json_path),
+                "audio": str(wav_path) if wav_path else None,
+                "diarization": str(diar_path) if diar_path else None,
+                "calibration_report": str(cal_report_path) if cal_report_path else None,
+                "calibrated": str(calibrated_path) if calibrated_path else None,
+                "diarized_segments": str(diarized_json) if diarized_json else None,
+                "diarized_txt": str(diarized_txt) if diarized_txt else None,
+                "tagged_txt": str(tagged_txt) if tagged_txt else None,
+                "confidence_report": str(confidence_report_path) if confidence_report_path else None,
+            }
+            diar_stats = {
+                "turns_before_smoothing": turns_before_smoothing,
+                "turns_after_smoothing": turns_after_smoothing,
+            }
+            sr = build_session_report(
+                session_ts=session_ts,
+                config=config,
+                segment_count=committer.seg_count,
+                output_paths=output_paths,
+                diarization_stats=diar_stats,
+                calibration_stats=cal_stats,
+            )
+            session_report_path = write_session_report(
+                sr, config.output_dir, session_ts
+            )
+            print(f"Session report     : {session_report_path}")
+
         print("Session ended.")
 
 

@@ -126,6 +126,7 @@ A session produces these files:
 | `speaker_tags_<timestamp>.json` | JSON | Speaker tag/label mapping |
 | `tag_labeled_<timestamp>.txt` | Plain text | Transcript with human-readable speaker tags |
 | `confidence_report_<timestamp>.json` | JSON | Per-segment ASR quality flags |
+| `session_report_<timestamp>.json` | JSON | Consolidated session summary (config, flags, stats) |
 
 ### RAW vs. NORMALIZED
 
@@ -439,6 +440,34 @@ diarization:
   calibration_allow_partial_assignment: false  # all-or-nothing assignment
 ```
 
+### Feature Flags (A/B Testing)
+
+Individual calibration pipeline components can be toggled for A/B testing. All default to `true` (current behavior preserved).
+
+```yaml
+diarization:
+  calibration_enabled: true           # master switch for calibration
+  overlap_stabilizer_enabled: true    # detect and freeze overlapping turns
+  prototype_matching_enabled: true    # cluster-level prototype assignment
+  min_duration_filter_enabled: true   # 1.2s minimum for embedding computation
+```
+
+| Flag | When `false` |
+|------|-------------|
+| `calibration_enabled` | Skip calibration entirely — keep diarization speaker ids |
+| `overlap_stabilizer_enabled` | No overlap detection — all turns eligible for embedding |
+| `prototype_matching_enabled` | Skip speaker remapping — keep original spk_N ids |
+| `min_duration_filter_enabled` | No 1.2s floor — embed all turns regardless of duration |
+
+### Session Report
+
+Each session produces a consolidated `session_report_<timestamp>.json` summarising config, feature flags, output file paths, and pipeline statistics.
+
+```yaml
+reporting:
+  session_report_enabled: true   # default: true
+```
+
 ### Lexicons
 
 Lexicons live in `resources/lexicons/<language>/`:
@@ -531,13 +560,13 @@ Both are read-only — no files are created or modified. Corrupt RAW files are s
 
 ## Configuration
 
-All tunable parameters are in `config.yaml`. No magic numbers in code.
+All tunable parameters are in `config.yaml`. See [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md) for complete configuration documentation with types, defaults, allowed values, and operational guidance.
 
 ```yaml
-language: en          # da, sv, en
+language: en
 
 audio:
-  device: null        # null = system default, or device index
+  device: null
   sample_rate: 16000
   channels: 1
 
@@ -550,22 +579,26 @@ vad:
 
 asr:
   model: large-v3
-  device: auto        # auto, cuda, cpu
+  device: auto
   compute_type: float16
 
 diarization:
   enabled: true
-  backend: default    # default or pyannote
-  smoothing: true     # merge short backchannel turns after diarization
-  min_turn_sec: 0.7   # merge turns shorter than this into neighbors
-  gap_merge_sec: 0.3  # fill same-speaker gaps smaller than this
-  calibration_profile: null   # profile name from profiles/ (without .json)
+  backend: default
+  smoothing: true
+  min_turn_sec: 0.7
+  gap_merge_sec: 0.3
+  calibration_profile: null
   calibration_similarity_threshold: 0.72
+  calibration_similarity_margin: 0.05
 
 normalization:
   enabled: true
   fuzzy_threshold: 0.92
   lexicon_dir: resources/lexicons
+
+reporting:
+  session_report_enabled: true
 
 output_dir: outputs
 ```
@@ -578,7 +611,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-285 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), and end-to-end integration (full pipeline without live microphone).
+298 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

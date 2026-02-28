@@ -293,4 +293,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Export diarized transcript as SRT subtitle file")
     p.add_argument("--export-vtt", action="store_true", default=False,
                     help="Export diarized transcript as WebVTT subtitle file")
+    p.add_argument("--export-summary", action="store_true", default=False,
+                    help="Export session summary as Markdown file")
     return p

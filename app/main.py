@@ -905,6 +905,11 @@ def run(config: AppConfig, args: object = None) -> None:
             )
             print(f"Session report     : {session_report_path}")
 
+            if getattr(args, "export_summary", False):
+                from app.export_summary import write_summary
+                summary_path = write_summary(sr, config.output_dir, session_ts)
+                print(f"Session summary    : {summary_path}")
+
         print("Session ended.")
 
 

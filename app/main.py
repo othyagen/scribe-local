@@ -388,6 +388,7 @@ def run(config: AppConfig, args: object = None) -> None:
         writer = OutputWriter(config.output_dir, asr_engine.model_name)
 
     # ── audio quality pre-check ────────────────────────────────
+    precheck_result: dict | None = None
     if config.audio.precheck_enabled:
         from app.audio_quality import (
             compute_audio_precheck_metrics,
@@ -407,6 +408,16 @@ def run(config: AppConfig, args: object = None) -> None:
                 for w in precheck_warns:
                     print(f"  WARNING: {w}")
             print()
+            precheck_result = {
+                "enabled": True,
+                "duration_sec": precheck_metrics.duration_sec,
+                "peak_dbfs": precheck_metrics.peak_dbfs,
+                "rms_dbfs": precheck_metrics.rms_dbfs,
+                "snr_db_est": precheck_metrics.snr_db,
+                "clipping_rate": precheck_metrics.clipping_rate,
+                "warnings": precheck_warns,
+                "passed": len(precheck_warns) == 0,
+            }
         else:
             print("  WARNING: No audio captured during pre-check.\n")
 
@@ -851,6 +862,7 @@ def run(config: AppConfig, args: object = None) -> None:
                 output_paths=output_paths,
                 diarization_stats=diar_stats,
                 calibration_stats=cal_stats,
+                audio_precheck=precheck_result,
             )
             session_report_path = write_session_report(
                 sr, config.output_dir, session_ts

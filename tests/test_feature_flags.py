@@ -250,3 +250,64 @@ class TestSessionReport:
         assert s["turns_after_smoothing"] == 18
         assert s["overlaps_marked"] == 2
         assert s["clusters_assigned"] == 2
+
+    def test_report_with_precheck_data(self):
+        cfg = AppConfig()
+        precheck = {
+            "enabled": True,
+            "duration_sec": 4.0,
+            "peak_dbfs": -6.0,
+            "rms_dbfs": -20.0,
+            "snr_db_est": 25.0,
+            "clipping_rate": 0.0,
+            "warnings": [],
+            "passed": True,
+        }
+        report = build_session_report(
+            session_ts="2026-01-01_12-00-00",
+            config=cfg,
+            segment_count=5,
+            output_paths={},
+            audio_precheck=precheck,
+        )
+        assert "audio_precheck" in report
+        ap = report["audio_precheck"]
+        assert ap["enabled"] is True
+        assert ap["duration_sec"] == 4.0
+        assert ap["snr_db_est"] == 25.0
+        assert ap["passed"] is True
+        assert ap["warnings"] == []
+
+    def test_report_with_precheck_warnings(self):
+        cfg = AppConfig()
+        precheck = {
+            "enabled": True,
+            "duration_sec": 4.0,
+            "peak_dbfs": -6.0,
+            "rms_dbfs": -50.0,
+            "snr_db_est": 10.0,
+            "clipping_rate": 0.0,
+            "warnings": ["Low estimated SNR (10.0 dB < 15.0 dB)",
+                         "Low signal level (-50.0 dBFS < -45.0 dBFS)"],
+            "passed": False,
+        }
+        report = build_session_report(
+            session_ts="2026-01-01_12-00-00",
+            config=cfg,
+            segment_count=5,
+            output_paths={},
+            audio_precheck=precheck,
+        )
+        ap = report["audio_precheck"]
+        assert ap["passed"] is False
+        assert len(ap["warnings"]) == 2
+
+    def test_report_without_precheck(self):
+        cfg = AppConfig()
+        report = build_session_report(
+            session_ts="2026-01-01_12-00-00",
+            config=cfg,
+            segment_count=5,
+            output_paths={},
+        )
+        assert "audio_precheck" not in report

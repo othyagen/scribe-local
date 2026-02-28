@@ -16,6 +16,7 @@ def build_session_report(
     output_paths: dict[str, Optional[str]],
     diarization_stats: Optional[dict] = None,
     calibration_stats: Optional[dict] = None,
+    audio_precheck: Optional[dict] = None,
 ) -> dict:
     """Build a consolidated session report dict.
 
@@ -61,6 +62,8 @@ def build_session_report(
         report["stats"].update(diarization_stats)
     if calibration_stats is not None:
         report["stats"].update(calibration_stats)
+    if audio_precheck is not None:
+        report["audio_precheck"] = audio_precheck
 
     return report
 

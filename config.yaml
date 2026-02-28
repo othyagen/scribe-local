@@ -3,9 +3,11 @@
 language: da  # da, sv, en
 
 audio:
-  device: null          # null = system default; integer = device index
+  device: null
   sample_rate: 16000
   channels: 1
+  precheck_enabled: true
+  precheck_seconds: 4.0
 
 vad:
   speech_threshold_rms: 0.0005

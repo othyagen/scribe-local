@@ -387,6 +387,29 @@ def run(config: AppConfig, args: object = None) -> None:
         committer = SegmentCommitter(asr_engine.model_name, config.language)
         writer = OutputWriter(config.output_dir, asr_engine.model_name)
 
+    # ── audio quality pre-check ────────────────────────────────
+    if config.audio.precheck_enabled:
+        from app.audio_quality import (
+            compute_audio_precheck_metrics,
+            detect_warnings,
+            format_precheck_report,
+            record_precheck,
+        )
+        print(f"Audio pre-check: recording {config.audio.precheck_seconds:.1f}s...")
+        precheck_buf = record_precheck(config)
+        if precheck_buf is not None:
+            precheck_metrics = compute_audio_precheck_metrics(
+                precheck_buf, sample_rate, config,
+            )
+            print(format_precheck_report(precheck_metrics))
+            precheck_warns = detect_warnings(precheck_metrics, config)
+            if precheck_warns:
+                for w in precheck_warns:
+                    print(f"  WARNING: {w}")
+            print()
+        else:
+            print("  WARNING: No audio captured during pre-check.\n")
+
     audio = AudioCapture(config)
 
     # ── state ────────────────────────────────────────────────────

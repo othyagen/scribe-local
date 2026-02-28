@@ -51,6 +51,78 @@ Sample rate in Hz. The ASR model (faster-whisper) expects 16 kHz mono audio. Cha
 
 Number of audio channels. Must be `1` (mono). Stereo input is not supported.
 
+### `audio.precheck_enabled`
+
+| Property | Value |
+|----------|-------|
+| Type | `bool` |
+| Default | `true` |
+
+When `true`, a short audio quality pre-check runs at session start before recording begins. Evaluates peak level, RMS, clipping rate, and estimated SNR. Prints a summary and warnings if thresholds are exceeded.
+
+### `audio.precheck_seconds`
+
+| Property | Value |
+|----------|-------|
+| Type | `float` |
+| Default | `4.0` |
+| Unit | seconds |
+
+Duration of audio captured for the pre-check evaluation.
+
+**When to modify:** Increase for more stable SNR estimates in variable environments. Decrease if startup latency is a concern.
+
+### `audio.precheck_frame_ms`
+
+| Property | Value |
+|----------|-------|
+| Type | `int` |
+| Default | `20` |
+| Unit | milliseconds |
+
+Frame duration used for per-frame RMS computation during SNR estimation. The 95th percentile frame RMS is treated as signal, the 10th percentile as noise.
+
+### `audio.precheck_snr_warn_db`
+
+| Property | Value |
+|----------|-------|
+| Type | `float` |
+| Default | `15.0` |
+| Unit | dB |
+
+SNR threshold below which a warning is emitted. Sessions with SNR below this value may produce degraded transcription quality.
+
+**When to modify:** Lower in consistently noisy environments where warnings are not actionable. Raise for clinical settings where audio quality is critical.
+
+### `audio.precheck_rms_warn_dbfs`
+
+| Property | Value |
+|----------|-------|
+| Type | `float` |
+| Default | `-45.0` |
+| Unit | dBFS |
+
+RMS level threshold below which a "low signal level" warning is emitted. Indicates the microphone may be too far from the speaker or gain is too low.
+
+### `audio.precheck_clip_warn_rate`
+
+| Property | Value |
+|----------|-------|
+| Type | `float` |
+| Default | `0.001` |
+
+Fraction of samples at or above the clip level that triggers a clipping warning. A value of `0.001` means 0.1% of samples.
+
+### `audio.precheck_clip_level`
+
+| Property | Value |
+|----------|-------|
+| Type | `float` |
+| Default | `0.99` |
+| Range | `0.0` to `1.0` |
+
+Amplitude threshold for clipping detection. Samples with `|x| >= clip_level` are counted as clipped.
+
 ---
 
 ## `vad`

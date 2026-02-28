@@ -16,6 +16,13 @@ class AudioConfig:
     device: Optional[int] = None
     sample_rate: int = 16000
     channels: int = 1
+    precheck_enabled: bool = True
+    precheck_seconds: float = 4.0
+    precheck_frame_ms: int = 20
+    precheck_snr_warn_db: float = 15.0
+    precheck_rms_warn_dbfs: float = -45.0
+    precheck_clip_warn_rate: float = 0.001
+    precheck_clip_level: float = 0.99
 
 
 @dataclass
@@ -104,6 +111,13 @@ def _build_audio(d: dict) -> AudioConfig:
         device=d.get("device"),
         sample_rate=d.get("sample_rate", 16000),
         channels=d.get("channels", 1),
+        precheck_enabled=d.get("precheck_enabled", True),
+        precheck_seconds=d.get("precheck_seconds", 4.0),
+        precheck_frame_ms=d.get("precheck_frame_ms", 20),
+        precheck_snr_warn_db=d.get("precheck_snr_warn_db", 15.0),
+        precheck_rms_warn_dbfs=d.get("precheck_rms_warn_dbfs", -45.0),
+        precheck_clip_warn_rate=d.get("precheck_clip_warn_rate", 0.001),
+        precheck_clip_level=d.get("precheck_clip_level", 0.99),
     )
 
 
@@ -191,6 +205,12 @@ def apply_cli_overrides(config: AppConfig, args: argparse.Namespace) -> AppConfi
         config.vad.long_silence_sec = args.vad_long_silence
     if getattr(args, "calibration_debug", False):
         config.diarization.calibration_debug = True
+    if getattr(args, "audio_precheck", None) is True:
+        config.audio.precheck_enabled = True
+    elif getattr(args, "no_audio_precheck", None) is True:
+        config.audio.precheck_enabled = False
+    if getattr(args, "audio_precheck_seconds", None) is not None:
+        config.audio.precheck_seconds = args.audio_precheck_seconds
     return config
 
 
@@ -259,4 +279,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Calibration diagnostics
     p.add_argument("--calibration-debug", action="store_true", default=False,
                     help="Print calibration diagnostics and write report file")
+
+    # Audio quality pre-check
+    p.add_argument("--audio-precheck", action="store_true", default=None,
+                    help="Enable audio quality pre-check (overrides config)")
+    p.add_argument("--no-audio-precheck", action="store_true", default=None,
+                    help="Disable audio quality pre-check (overrides config)")
+    p.add_argument("--audio-precheck-seconds", type=float, default=None,
+                    help="Pre-check recording duration in seconds (overrides config)")
     return p

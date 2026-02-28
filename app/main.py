@@ -48,6 +48,112 @@ from app.normalize import Normalizer
 from app.io import OutputWriter
 
 
+# ── resume support ───────────────────────────────────────────────────
+
+class ResumeError(ValueError):
+    """Raised when session resume validation fails."""
+
+
+def load_resume_state(
+    output_dir: str,
+    session_ts: str,
+    expected_model: str,
+) -> dict:
+    """Validate and load state from an existing session for resume.
+
+    Returns a dict with model_tag, last_t1, last_seg_num, last_para_num,
+    and wav_parts.  Raises ResumeError on any validation failure.
+    """
+    out = Path(output_dir)
+
+    # Find raw JSONL file matching session_ts
+    raw_candidates = list(out.glob(f"raw_{session_ts}_*.json"))
+    if not raw_candidates:
+        raise ResumeError(
+            f"no RAW file found for session {session_ts} in {output_dir}"
+        )
+    if len(raw_candidates) > 1:
+        raise ResumeError(
+            f"multiple RAW files for session {session_ts}: {raw_candidates}"
+        )
+
+    raw_path = raw_candidates[0]
+
+    # Extract model_tag from filename: raw_<ts>_<model_tag>.json
+    prefix = f"raw_{session_ts}_"
+    model_tag = raw_path.stem[len(prefix):]
+
+    # Verify model matches
+    expected_tag = expected_model.replace("/", "-")
+    if model_tag != expected_tag:
+        raise ResumeError(
+            f"model mismatch — session used '{model_tag}' "
+            f"but current config specifies '{expected_tag}'"
+        )
+
+    # Parse all segments from JSONL
+    segments: list[dict] = []
+    with open(raw_path, encoding="utf-8") as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                segments.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise ResumeError(
+                    f"corrupt JSONL at line {line_num} in {raw_path}: {e}"
+                )
+
+    if not segments:
+        raise ResumeError(f"RAW file has no segments: {raw_path}")
+
+    # Validate timestamps
+    last_seg = segments[-1]
+    last_t1 = last_seg["t1"]
+    if last_t1 <= 0:
+        raise ResumeError(f"last segment t1={last_t1} is not positive")
+
+    prev_t0 = 0.0
+    prev_t1 = 0.0
+    for seg in segments:
+        t0, t1 = seg["t0"], seg["t1"]
+        if t0 > t1:
+            raise ResumeError(
+                f"segment {seg['seg_id']} has t0={t0} > t1={t1}"
+            )
+        if t0 < prev_t0:
+            raise ResumeError(
+                f"non-monotonic t0 — segment {seg['seg_id']} "
+                f"t0={t0} < previous t0={prev_t0}"
+            )
+        if t1 < prev_t1:
+            raise ResumeError(
+                f"non-monotonic t1 — segment {seg['seg_id']} "
+                f"t1={t1} < previous t1={prev_t1}"
+            )
+        prev_t0, prev_t1 = t0, t1
+
+    # Extract counters from last segment
+    last_seg_num = int(last_seg["seg_id"].split("_")[1])
+    last_para_num = int(last_seg["paragraph_id"].split("_")[1])
+
+    # Find existing WAV parts
+    wav_parts: list[Path] = []
+    original_wav = out / f"audio_{session_ts}.wav"
+    if original_wav.exists():
+        wav_parts.append(original_wav)
+    wav_parts.extend(sorted(out.glob(f"audio_{session_ts}_part*.wav")))
+
+    return {
+        "model_tag": model_tag,
+        "last_t1": last_t1,
+        "last_seg_num": last_seg_num,
+        "last_para_num": last_para_num,
+        "wav_parts": wav_parts,
+    }
+
+
 # ── pipeline processing ──────────────────────────────────────────────
 
 def process_speech_buffer(
@@ -112,6 +218,7 @@ def _write_session_wav(
     chunks: list[np.ndarray],
     sample_rate: int,
     output_dir: str,
+    filename_override: str | None = None,
 ) -> Path | None:
     """Write all captured audio chunks to a single 16-bit PCM WAV file.
 
@@ -120,8 +227,11 @@ def _write_session_wav(
     if not chunks:
         return None
 
-    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    out = Path(output_dir) / f"audio_{ts}.wav"
+    if filename_override:
+        out = Path(output_dir) / filename_override
+    else:
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        out = Path(output_dir) / f"audio_{ts}.wav"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"[{_ts()}] Writing session WAV...")
@@ -135,6 +245,34 @@ def _write_session_wav(
         wf.writeframes(pcm.tobytes())
 
     print(f"[{_ts()}] Session WAV written.")
+    return out
+
+
+def _concatenate_wavs(
+    wav_paths: list[Path],
+    sample_rate: int,
+    output_dir: str,
+    filename: str,
+) -> Path:
+    """Concatenate multiple WAV files into a single combined WAV.
+
+    Does NOT delete the part files (safety: never destroy data).
+    """
+    out = Path(output_dir) / filename
+    all_samples: list[np.ndarray] = []
+    for wp in wav_paths:
+        with wave.open(str(wp), "rb") as wf:
+            pcm_bytes = wf.readframes(wf.getnframes())
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16)
+            all_samples.append(samples)
+
+    combined = np.concatenate(all_samples)
+    with wave.open(str(out), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(combined.tobytes())
+
     return out
 
 
@@ -219,11 +357,35 @@ def run(config: AppConfig, args: object = None) -> None:
     asr_engine = ASREngine(config)
     print(f"ASR device      : {asr_engine.device}")
 
+    # ── resume state (if applicable) ────────────────────────────
+    resume_ts = getattr(args, "resume", None)
+    resume_state = None
+    if resume_ts:
+        resume_state = load_resume_state(
+            config.output_dir, resume_ts, asr_engine.model_name
+        )
+        print(f"Resuming session  : {resume_ts}")
+        print(f"Last segment      : seg_{resume_state['last_seg_num']:04d} "
+              f"(t1={resume_state['last_t1']:.3f}s)")
+
     vad = VoiceActivityDetector(config)
     diarizer = create_diarizer(config)
-    committer = SegmentCommitter(asr_engine.model_name, config.language)
     normalizer = Normalizer(config)
-    writer = OutputWriter(config.output_dir, asr_engine.model_name)
+
+    if resume_state:
+        committer = SegmentCommitter(
+            asr_engine.model_name, config.language,
+            start_seg=resume_state["last_seg_num"],
+            start_para=resume_state["last_para_num"],
+        )
+        writer = OutputWriter(
+            config.output_dir, asr_engine.model_name,
+            session_ts=resume_ts,
+            model_tag=resume_state["model_tag"],
+        )
+    else:
+        committer = SegmentCommitter(asr_engine.model_name, config.language)
+        writer = OutputWriter(config.output_dir, asr_engine.model_name)
 
     audio = AudioCapture(config)
 
@@ -231,7 +393,10 @@ def run(config: AppConfig, args: object = None) -> None:
     speech_buffer: list[np.ndarray] = []
     session_audio: list[np.ndarray] = []
     buffer_start_sample: int = 0
-    total_samples: int = 0
+    total_samples: int = (
+        int(resume_state["last_t1"] * sample_rate)
+        if resume_state else 0
+    )
     silence_samples: int = 0
     currently_speaking: bool = False
     sentence_committed: bool = False
@@ -339,11 +504,34 @@ def run(config: AppConfig, args: object = None) -> None:
 
         # Write session-end files (bounded timeout)
         print(f"[{_ts()}] Writing output files...")
-        writer.finalize(timeout=5.0)
+        if resume_state:
+            writer.finalize_from_raw(normalizer, timeout=5.0)
+        else:
+            writer.finalize(timeout=5.0)
         print(f"[{_ts()}] Output files written.")
 
         # Write session WAV
-        wav_path = _write_session_wav(session_audio, sample_rate, config.output_dir)
+        if resume_state:
+            part_num = len(resume_state["wav_parts"]) + 1
+            wav_path = _write_session_wav(
+                session_audio, sample_rate, config.output_dir,
+                filename_override=f"audio_{resume_ts}_part{part_num}.wav",
+            )
+            # Concatenate all parts into a single WAV for pyannote
+            all_wav_parts = list(resume_state["wav_parts"])
+            if wav_path:
+                all_wav_parts.append(wav_path)
+            if len(all_wav_parts) > 1:
+                wav_path = _concatenate_wavs(
+                    all_wav_parts, sample_rate, config.output_dir,
+                    f"audio_{resume_ts}.wav",
+                )
+            elif all_wav_parts:
+                wav_path = all_wav_parts[0]
+            else:
+                wav_path = None
+        else:
+            wav_path = _write_session_wav(session_audio, sample_rate, config.output_dir)
 
         # Post-session pyannote diarization
         diar_path = None
@@ -602,6 +790,11 @@ def main() -> None:
         print(f"Error: unsupported language '{config.language}'. Use da, sv, or en.")
         sys.exit(1)
 
+    # Mutual exclusion: --resume and --session
+    if getattr(args, "resume", None) and args.session:
+        print("Error: --resume and --session are mutually exclusive")
+        sys.exit(1)
+
     # Standalone session mode (tagging + merge)
     if args.session:
         from app.tagging import (
@@ -680,7 +873,11 @@ def main() -> None:
 
         sys.exit(0)
 
-    run(config, args)
+    try:
+        run(config, args)
+    except ResumeError as e:
+        print(f"Error: resume failed — {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

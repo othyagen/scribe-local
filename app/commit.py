@@ -25,6 +25,20 @@ class RawSegment:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "RawSegment":
+        """Reconstruct a RawSegment from a dict (inverse of to_dict)."""
+        return cls(
+            seg_id=d["seg_id"],
+            t0=d["t0"],
+            t1=d["t1"],
+            speaker_id=d["speaker_id"],
+            raw_text=d["raw_text"],
+            model_name=d["model_name"],
+            language=d["language"],
+            paragraph_id=d["paragraph_id"],
+        )
+
     def to_txt_line(self) -> str:
         ts0 = _fmt_ts(self.t0)
         ts1 = _fmt_ts(self.t1)
@@ -34,11 +48,17 @@ class RawSegment:
 class SegmentCommitter:
     """Creates RawSegments with sequential IDs and paragraph tracking."""
 
-    def __init__(self, model_name: str, language: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        language: str,
+        start_seg: int = 0,
+        start_para: int = 0,
+    ) -> None:
         self.model_name: str = model_name
         self.language: str = language
-        self._seg_counter: int = 0
-        self._para_counter: int = 0
+        self._seg_counter: int = start_seg
+        self._para_counter: int = start_para
 
     def commit(
         self,

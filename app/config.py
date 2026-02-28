@@ -211,6 +211,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--session", type=str, default=None,
                     metavar="TIMESTAMP",
                     help="Session timestamp for standalone tag/merge operations")
+    p.add_argument("--resume", type=str, default=None,
+                    metavar="TIMESTAMP",
+                    help="Resume an interrupted session by appending to its files")
 
     # Speaker merge
     p.add_argument("--merge", action="append", default=[],

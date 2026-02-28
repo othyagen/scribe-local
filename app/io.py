@@ -24,12 +24,23 @@ from app.normalize import NormalizedSegment, NormalizationChange
 class OutputWriter:
     """Manages all output files for a single recording session."""
 
-    def __init__(self, output_dir: str, model_name: str) -> None:
+    def __init__(
+        self,
+        output_dir: str,
+        model_name: str,
+        session_ts: str | None = None,
+        model_tag: str | None = None,
+    ) -> None:
         self._dir = Path(output_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
 
-        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        tag = model_name.replace("/", "-")
+        if session_ts and model_tag:
+            # Resume mode: reuse existing file paths
+            ts = session_ts
+            tag = model_tag
+        else:
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            tag = model_name.replace("/", "-")
 
         self._raw_json_path = self._dir / f"raw_{ts}_{tag}.json"
         self._raw_txt_path = self._dir / f"raw_{ts}_{tag}.txt"
@@ -137,6 +148,36 @@ class OutputWriter:
             print(
                 f"[shutdown] WARNING: writer.finalize() did not complete "
                 f"within {timeout}s — RAW files are safe on disk"
+            )
+
+    def finalize_from_raw(self, normalizer: object, timeout: float = 5.0) -> None:
+        """Re-normalize ALL raw segments from disk and write session-end files.
+
+        Used on resume to produce consistent normalized output from the
+        combined (old + new) raw data.
+        """
+        self._close_raw_handles()
+
+        # Reload all raw segments from JSONL and re-normalize
+        self._normalized = []
+        self._changes = []
+        with open(self._raw_json_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                seg = RawSegment.from_dict(json.loads(line))
+                norm_seg, changes = normalizer.normalize(seg)
+                self._normalized.append(norm_seg)
+                self._changes.extend(changes)
+
+        t = threading.Thread(target=self._write_session_files, daemon=True)
+        t.start()
+        t.join(timeout=timeout)
+        if t.is_alive():
+            print(
+                f"[shutdown] WARNING: writer.finalize_from_raw() did not "
+                f"complete within {timeout}s — RAW files are safe on disk"
             )
 
     # ------------------------------------------------------------------

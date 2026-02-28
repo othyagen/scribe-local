@@ -287,4 +287,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Disable audio quality pre-check (overrides config)")
     p.add_argument("--audio-precheck-seconds", type=float, default=None,
                     help="Pre-check recording duration in seconds (overrides config)")
+
+    # Subtitle export
+    p.add_argument("--export-srt", action="store_true", default=False,
+                    help="Export diarized transcript as SRT subtitle file")
+    p.add_argument("--export-vtt", action="store_true", default=False,
+                    help="Export diarized transcript as WebVTT subtitle file")
     return p

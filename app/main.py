@@ -800,6 +800,36 @@ def run(config: AppConfig, args: object = None) -> None:
                 diarized_txt, tags, config.output_dir, diar_ts
             )
 
+        # Subtitle export (SRT / VTT)
+        srt_path = None
+        vtt_path = None
+        export_srt = getattr(args, "export_srt", False)
+        export_vtt = getattr(args, "export_vtt", False)
+        if (export_srt or export_vtt) and diarized_json:
+            from app.export_subtitles import write_srt, write_vtt
+            # Build subtitle segments from diarized data
+            with open(diarized_json, encoding="utf-8") as f:
+                diar_segs = json.load(f)
+            with open(writer.normalized_json_path, encoding="utf-8") as f:
+                norm_segs = json.load(f)
+            text_by_seg = {s["seg_id"]: s.get("normalized_text", "") for s in norm_segs}
+            subtitle_segs = [
+                {
+                    "t0": ds["t0"],
+                    "t1": ds["t1"],
+                    "speaker": ds["new_speaker_id"],
+                    "text": text_by_seg.get(ds["seg_id"], ""),
+                }
+                for ds in diar_segs
+            ]
+            sub_ts = diarized_json.stem.removeprefix("diarized_segments_")
+            if export_srt:
+                srt_path = write_srt(subtitle_segs, config.output_dir, sub_ts)
+                print(f"[{_ts()}] SRT export: {srt_path}")
+            if export_vtt:
+                vtt_path = write_vtt(subtitle_segs, config.output_dir, sub_ts)
+                print(f"[{_ts()}] VTT export: {vtt_path}")
+
         # Confidence report
         confidence_report_path = None
         if confidence_entries:
@@ -832,6 +862,10 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"Tagged transcript  : {tagged_txt}")
         if confidence_report_path:
             print(f"Confidence report  : {confidence_report_path}")
+        if srt_path:
+            print(f"SRT subtitles      : {srt_path}")
+        if vtt_path:
+            print(f"VTT subtitles      : {vtt_path}")
 
         # Session report (consolidated summary)
         session_report_path = None
@@ -850,6 +884,8 @@ def run(config: AppConfig, args: object = None) -> None:
                 "diarized_txt": str(diarized_txt) if diarized_txt else None,
                 "tagged_txt": str(tagged_txt) if tagged_txt else None,
                 "confidence_report": str(confidence_report_path) if confidence_report_path else None,
+                "srt": str(srt_path) if srt_path else None,
+                "vtt": str(vtt_path) if vtt_path else None,
             }
             diar_stats = {
                 "turns_before_smoothing": turns_before_smoothing,

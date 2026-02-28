@@ -198,6 +198,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--list-audio-devices", action="store_true",
                     help="List available audio input devices and exit")
 
+    # Session browser
+    p.add_argument("--list-sessions", action="store_true", default=False,
+                    help="List all sessions in the output directory and exit")
+    p.add_argument("--show-session", type=str, default=None,
+                    metavar="TIMESTAMP",
+                    help="Show detailed info for a session and exit")
+
     # Speaker tagging
     p.add_argument("--auto-tags", choices=["none", "alphabetical", "index"],
                     default="none",

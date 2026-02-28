@@ -96,6 +96,8 @@ python -m app.main --output-dir my_session
 | `--merge SPK=TARGET` | Merge speaker into target, repeatable (e.g. `--merge spk_2=spk_0`) |
 | `--session TIMESTAMP` | Session timestamp for standalone tag/merge operations |
 | `--resume TIMESTAMP` | Resume an interrupted session by appending to its files |
+| `--list-sessions` | List all sessions in the output directory and exit |
+| `--show-session TIMESTAMP` | Show detailed info for a session and exit |
 
 ### Stopping
 
@@ -505,6 +507,26 @@ Part files are never deleted — both parts and the concatenated WAV are preserv
 
 `--resume` and `--session` are mutually exclusive.
 
+### Session Browser
+
+Inspect past sessions without recording:
+
+```bash
+# List all sessions (newest first)
+python -m app.main --list-sessions
+
+# Show detailed info for a specific session
+python -m app.main --show-session 2026-02-28_14-30-00
+```
+
+`--list-sessions` prints a table with timestamp, duration, segment count, model, language, and which companion files exist (audio, diarization, tags, normalization, confidence flags).
+
+`--show-session` prints detailed info including file paths, speaker count (from diarization), confidence stats, and whether the session can be resumed.
+
+Both are read-only — no files are created or modified. Corrupt RAW files are skipped with a warning to stderr.
+
+`--list-sessions` and `--show-session` are mutually exclusive with each other and with `--session`.
+
 ---
 
 ## Configuration
@@ -556,7 +578,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-255 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), and end-to-end integration (full pipeline without live microphone).
+271 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

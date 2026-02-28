@@ -736,6 +736,79 @@ def run(config: AppConfig, args: object = None) -> None:
         print("Session ended.")
 
 
+# ── session browser formatting ────────────────────────────────────────
+
+def _fmt_duration(seconds: float) -> str:
+    """Format seconds as mm:ss."""
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m:02d}:{s:02d}"
+
+
+def _print_session_list(sessions: list) -> None:
+    """Print a formatted table of sessions."""
+    if not sessions:
+        print("No sessions found.")
+        return
+
+    # Header
+    print(
+        f"{'Timestamp':<21} {'Duration':>8} {'Segs':>5} "
+        f"{'Model':<12} {'Lang':>4} {'Audio':>8} "
+        f"{'Diar':>4} {'Conf':>12} {'Resume':>6}"
+    )
+    print("-" * 90)
+
+    for s in sessions:
+        dur = _fmt_duration(s.duration_sec)
+        audio = f"{s.audio_parts_count} part" if s.audio_parts_count == 1 else (
+            f"{s.audio_parts_count} parts" if s.audio_parts_count > 0 else "NO"
+        )
+        diar = "YES" if s.has_diarization else "NO"
+        if s.has_confidence and s.confidence_flagged_count is not None:
+            conf = f"{s.confidence_flagged_count} flagged"
+        elif s.has_confidence:
+            conf = "YES"
+        else:
+            conf = "-"
+        resume = "YES" if s.resume_possible else "NO"
+
+        print(
+            f"{s.ts:<21} {dur:>8} {s.segment_count:>5} "
+            f"{s.model_tag:<12} {s.language:>4} {audio:>8} "
+            f"{diar:>4} {conf:>12} {resume:>6}"
+        )
+
+
+def _print_session_detail(info: dict) -> None:
+    """Print detailed session info."""
+    print(f"Session: {info['ts']}")
+    print("-" * 50)
+    print(f"  Model         : {info['model_tag']}")
+    print(f"  Language      : {info['language']}")
+    print(f"  Segments      : {info['segment_count']}")
+    print(f"  Duration      : {_fmt_duration(info['duration_sec'])} ({info['duration_sec']:.1f}s)")
+    print(f"  Audio         : {'YES' if info['has_audio'] else 'NO'} ({info['audio_parts_count']} parts)")
+    print(f"  Normalized    : {'YES' if info['has_normalized'] else 'NO'}")
+    print(f"  Diarization   : {'YES' if info['has_diarization'] else 'NO'}")
+    if info.get("speaker_count") is not None:
+        print(f"  Speakers      : {info['speaker_count']}")
+    print(f"  Speaker tags  : {'YES' if info['has_tags'] else 'NO'}")
+    if info['has_confidence']:
+        flagged = info.get('confidence_flagged_count')
+        total = info.get('confidence_total', '?')
+        print(f"  Confidence    : {flagged}/{total} flagged")
+    else:
+        print(f"  Confidence    : NO")
+    print(f"  Resume        : {'YES' if info['resume_possible'] else 'NO'}")
+    if info.get("resume_reason"):
+        print(f"                  ({info['resume_reason']})")
+    print()
+    print("Files:")
+    for label, path in info.get("files", {}).items():
+        print(f"  {label:<20}: {path}")
+
+
 # ── entry point ──────────────────────────────────────────────────────
 
 def main() -> None:
@@ -745,6 +818,45 @@ def main() -> None:
     # --list-audio-devices: print and exit
     if args.list_audio_devices:
         list_devices()
+        sys.exit(0)
+
+    # --list-sessions / --show-session: session browser (early exit)
+    if args.list_sessions or args.show_session:
+        # Mutual exclusion
+        conflicts = []
+        if args.list_sessions and args.show_session:
+            conflicts.append("--list-sessions and --show-session")
+        if getattr(args, "resume", None):
+            conflicts.append("--resume")
+        if args.session:
+            conflicts.append("--session")
+        if conflicts:
+            print(f"Error: {' and '.join(conflicts)} cannot be used together")
+            sys.exit(1)
+
+        # Load config for output_dir
+        config_path = Path(args.config)
+        if config_path.exists():
+            config = load_config(str(config_path))
+        elif args.config != "config.yaml":
+            print(f"Error: config file not found: {args.config}")
+            sys.exit(1)
+        else:
+            config = AppConfig()
+        config = apply_cli_overrides(config, args)
+
+        from app.session_browser import scan_sessions, show_session
+        out_dir = Path(config.output_dir)
+
+        if args.list_sessions:
+            _print_session_list(scan_sessions(out_dir))
+        else:
+            try:
+                info = show_session(out_dir, args.show_session)
+            except ValueError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+            _print_session_detail(info)
         sys.exit(0)
 
     # --create-profile: record voice samples and exit

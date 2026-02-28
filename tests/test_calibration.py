@@ -997,7 +997,7 @@ class TestFilterEligibleClusters:
 
 class TestAllowPartialAssignment:
     def test_partial_true_applies_subset(self):
-        """allow_partial=True overrides only assigned clusters."""
+        """allow_partial=True overrides assigned clusters; unassigned get UNKNOWN."""
         turns = [
             _turn(0.0, 1.0, "spk_0"),
             _turn(1.0, 2.0, "spk_1"),
@@ -1009,7 +1009,7 @@ class TestAllowPartialAssignment:
             allow_partial=True,
         )
         assert result[0]["speaker"] == "spk_0"
-        assert result[1]["speaker"] == "spk_1"
+        assert result[1]["speaker"] == "UNKNOWN"
 
     def test_partial_false_blocks_when_incomplete(self):
         """allow_partial=False returns unchanged turns when not all assigned."""

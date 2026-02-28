@@ -568,6 +568,7 @@ def run(config: AppConfig, args: object = None) -> None:
         if diar_path and config.diarization.calibration_profile:
             from app.calibration import (
                 embed_turns, load_profile,
+                detect_and_mark_overlap, MIN_PROTOTYPE_DURATION_SEC,
                 build_cluster_embeddings_with_stats,
                 filter_eligible_clusters,
                 assign_clusters_to_profile,
@@ -582,13 +583,18 @@ def run(config: AppConfig, args: object = None) -> None:
                 profile = load_profile(profile_path)
                 with open(diar_path, encoding="utf-8") as f:
                     diar_data = json.load(f)
+                diar_data["turns"] = detect_and_mark_overlap(diar_data["turns"])
                 print(f"[{_ts()}] Extracting per-turn embeddings...")
                 embed_turns(
                     diar_data["turns"], wav_path,
-                    min_duration_sec=config.diarization.calibration_min_turn_duration_sec,
+                    min_duration_sec=max(
+                        config.diarization.calibration_min_turn_duration_sec,
+                        MIN_PROTOTYPE_DURATION_SEC,
+                    ),
                 )
                 cluster_embs, cluster_stats = build_cluster_embeddings_with_stats(
-                    diar_data["turns"]
+                    diar_data["turns"],
+                    min_duration_sec=MIN_PROTOTYPE_DURATION_SEC,
                 )
                 eligible_embs, ineligible_reasons = filter_eligible_clusters(
                     cluster_embs, cluster_stats,
@@ -628,9 +634,11 @@ def run(config: AppConfig, args: object = None) -> None:
                     eligible_cluster_ids=eligible_ids,
                     allow_partial=allow_partial,
                 )
-                # Strip embeddings before writing
+                # Strip embeddings and overlap markers before writing
                 for t in diar_data["turns"]:
                     t.pop("embedding", None)
+                    t.pop("overlap", None)
+                    t.pop("overlap_with", None)
                 calibrated_path = diar_path.with_suffix(".calibrated.json")
                 with open(calibrated_path, "w", encoding="utf-8") as f:
                     json.dump(diar_data, f, ensure_ascii=False, indent=2)

@@ -18,6 +18,10 @@ from app.config import AppConfig
 # Module-level singleton for pyannote Inference model (lazy-init)
 _EMBED_INFERENCE = None
 
+# Minimum turn duration (seconds) for prototype embedding computation.
+# Turns shorter than this are excluded from embedding and cluster prototypes.
+MIN_PROTOTYPE_DURATION_SEC = 1.2
+
 
 def load_profile(profile_path: str) -> dict:
     """Load a calibration profile from a JSON file.
@@ -48,6 +52,37 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     if mag1 == 0.0 or mag2 == 0.0:
         return 0.0
     return dot / (mag1 * mag2)
+
+
+def detect_and_mark_overlap(turns: list[dict]) -> list[dict]:
+    """Detect overlapping diarization turns and mark them.
+
+    Sorts turns by ``start`` time and marks pairs where
+    ``turns[j]["start"] < turns[i]["end"]`` (j > i) with
+    ``overlap=True`` and ``overlap_with=<other speaker>``.
+    Non-overlapping turns get ``overlap=False``.
+
+    Returns a new list — does not mutate *turns*.
+    """
+    result = copy.deepcopy(turns)
+    result.sort(key=lambda t: t["start"])
+
+    for i, turn_i in enumerate(result):
+        if "overlap" not in turn_i:
+            turn_i["overlap"] = False
+        for j in range(i + 1, len(result)):
+            turn_j = result[j]
+            if turn_j["start"] >= turn_i["end"]:
+                break  # sorted — no further overlaps with turn_i
+            # Mark both as overlapping (don't overwrite existing overlap_with)
+            if not turn_i["overlap"]:
+                turn_i["overlap"] = True
+                turn_i["overlap_with"] = turn_j["speaker"]
+            if not turn_j.get("overlap", False):
+                turn_j["overlap"] = True
+                turn_j["overlap_with"] = turn_i["speaker"]
+
+    return result
 
 
 def match_turn_embeddings(
@@ -119,8 +154,12 @@ def build_cluster_embeddings(turns: list[dict]) -> dict[str, list[float]]:
 
 def build_cluster_embeddings_with_stats(
     turns: list[dict],
+    min_duration_sec: float = 0.0,
 ) -> tuple[dict[str, list[float]], dict[str, dict]]:
     """Compute cluster embeddings and per-cluster statistics.
+
+    Turns marked as overlapping (``overlap=True``) or shorter than
+    *min_duration_sec* are excluded from prototype computation.
 
     Returns ``(cluster_embs, cluster_stats)`` where *cluster_stats* maps
     each speaker id to ``{"embedded_turn_count": int, "embedded_total_sec": float}``.
@@ -132,8 +171,13 @@ def build_cluster_embeddings_with_stats(
         spk = turn["speaker"]
         if "embedding" not in turn:
             continue
+        if turn.get("overlap"):
+            continue
+        duration = turn["end"] - turn["start"]
+        if duration < min_duration_sec:
+            continue
         cluster_emb_lists.setdefault(spk, []).append(turn["embedding"])
-        cluster_durations.setdefault(spk, []).append(turn["end"] - turn["start"])
+        cluster_durations.setdefault(spk, []).append(duration)
 
     cluster_embs: dict[str, list[float]] = {}
     cluster_stats: dict[str, dict] = {}
@@ -260,6 +304,10 @@ def apply_cluster_override(
 ) -> list[dict]:
     """Override ``turn["speaker"]`` using a cluster→profile mapping.
 
+    Overlap turns (``overlap=True``) are never overridden (speaker freeze).
+    Eligible clusters that are NOT in *mapping* get ``"UNKNOWN"`` as their
+    speaker ID (unless the turn is an overlap turn).
+
     If *allow_partial* is False and not all eligible clusters are assigned,
     returns a deep copy with no overrides applied.
 
@@ -272,9 +320,14 @@ def apply_cluster_override(
 
     result = copy.deepcopy(turns)
     for turn in result:
+        # Overlap turns keep their original speaker_id (freeze rule)
+        if turn.get("overlap"):
+            continue
         mapped = mapping.get(turn["speaker"])
         if mapped is not None:
             turn["speaker"] = mapped
+        elif eligible_cluster_ids is not None and turn["speaker"] in eligible_cluster_ids:
+            turn["speaker"] = "UNKNOWN"
     return result
 
 
@@ -479,6 +532,8 @@ def embed_turns(
     inference = _get_inference()
 
     for turn in turns:
+        if turn.get("overlap"):
+            continue
         duration = turn["end"] - turn["start"]
         if duration < min_duration_sec:
             continue

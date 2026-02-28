@@ -98,6 +98,11 @@ python -m app.main --output-dir my_session
 | `--resume TIMESTAMP` | Resume an interrupted session by appending to its files |
 | `--list-sessions` | List all sessions in the output directory and exit |
 | `--show-session TIMESTAMP` | Show detailed info for a session and exit |
+| `--audio-precheck` | Enable audio quality pre-check (overrides config) |
+| `--no-audio-precheck` | Disable audio quality pre-check (overrides config) |
+| `--audio-precheck-seconds FLOAT` | Pre-check recording duration in seconds (overrides config) |
+| `--export-srt` | Export diarized transcript as SRT subtitle file |
+| `--export-vtt` | Export diarized transcript as WebVTT subtitle file |
 
 ### Stopping
 
@@ -127,6 +132,8 @@ A session produces these files:
 | `tag_labeled_<timestamp>.txt` | Plain text | Transcript with human-readable speaker tags |
 | `confidence_report_<timestamp>.json` | JSON | Per-segment ASR quality flags |
 | `session_report_<timestamp>.json` | JSON | Consolidated session summary (config, flags, stats) |
+| `subtitles_<timestamp>.srt` | SRT | Subtitle file with speaker-prefixed cues (when `--export-srt`) |
+| `subtitles_<timestamp>.vtt` | WebVTT | Subtitle file with speaker-prefixed cues (when `--export-vtt`) |
 
 ### RAW vs. NORMALIZED
 
@@ -463,10 +470,64 @@ diarization:
 
 Each session produces a consolidated `session_report_<timestamp>.json` summarising config, feature flags, output file paths, and pipeline statistics.
 
+When audio pre-check is enabled, the report includes an `audio_precheck` block with the computed metrics and any warnings. When pre-check is disabled or not run, this block is omitted.
+
 ```yaml
 reporting:
   session_report_enabled: true   # default: true
 ```
+
+### Audio Quality Pre-check
+
+At session start, a short audio sample is recorded and evaluated before the main recording begins. This catches bad mic setup, excessive noise, or clipping before a long session is wasted.
+
+Metrics computed:
+- **Peak** and **RMS** level (dBFS)
+- **Clipping rate** (fraction of samples at or above clip level)
+- **SNR estimate** (95th vs 10th percentile frame RMS, clamped to 0–60 dB)
+
+Warnings are printed if SNR, RMS, or clipping exceed configured thresholds. Results are persisted in the session report JSON.
+
+```yaml
+audio:
+  precheck_enabled: true
+  precheck_seconds: 4.0
+```
+
+```bash
+# Run with pre-check (default)
+python -m app.main --config config.yaml
+
+# Disable pre-check for this session
+python -m app.main --no-audio-precheck
+
+# Override pre-check duration
+python -m app.main --audio-precheck-seconds 8.0
+```
+
+See [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md) for all `audio.precheck_*` fields.
+
+### Subtitle Export (SRT / VTT)
+
+Export diarized transcripts as subtitle files. Each cue is prefixed with the speaker label. Requires diarization to be enabled (`diarization.backend: pyannote`).
+
+```bash
+# Export SRT
+python -m app.main --config config.yaml --export-srt
+
+# Export VTT
+python -m app.main --config config.yaml --export-vtt
+
+# Both at once
+python -m app.main --config config.yaml --export-srt --export-vtt
+```
+
+Output files: `subtitles_<timestamp>.srt` and/or `subtitles_<timestamp>.vtt` in the output directory. Paths are included in the session report.
+
+Edge cases handled automatically:
+- Empty or whitespace-only text segments are skipped
+- Segments where end <= start are fixed (end = start + 0.01)
+- Negative timestamps are clamped to 0
 
 ### Lexicons
 
@@ -569,6 +630,8 @@ audio:
   device: null
   sample_rate: 16000
   channels: 1
+  precheck_enabled: true
+  precheck_seconds: 4.0
 
 vad:
   speech_threshold_rms: 0.01
@@ -611,7 +674,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-298 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write), and end-to-end integration (full pipeline without live microphone).
+337 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

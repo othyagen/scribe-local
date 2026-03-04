@@ -94,7 +94,7 @@ python -m app.main --output-dir my_session
 | `--set-tag SPK=TAG` | Set speaker tag, repeatable (e.g. `--set-tag spk_0=Host`) |
 | `--set-label SPK=LABEL` | Set speaker label, repeatable (e.g. `--set-label spk_0=Alice`) |
 | `--merge SPK=TARGET` | Merge speaker into target, repeatable (e.g. `--merge spk_2=spk_0`) |
-| `--session TIMESTAMP` | Session timestamp for standalone tag/merge operations |
+| `--session TIMESTAMP` | Session timestamp for standalone tag/merge/export operations |
 | `--resume TIMESTAMP` | Resume an interrupted session by appending to its files |
 | `--list-sessions` | List all sessions in the output directory and exit |
 | `--show-session TIMESTAMP` | Show detailed info for a session and exit |
@@ -103,6 +103,7 @@ python -m app.main --output-dir my_session
 | `--audio-precheck-seconds FLOAT` | Pre-check recording duration in seconds (overrides config) |
 | `--export-srt` | Export diarized transcript as SRT subtitle file |
 | `--export-vtt` | Export diarized transcript as WebVTT subtitle file |
+| `--export-summary` | Export session summary as Markdown file |
 
 ### Stopping
 
@@ -529,6 +530,39 @@ Edge cases handled automatically:
 - Segments where end <= start are fixed (end = start + 0.01)
 - Negative timestamps are clamped to 0
 
+### Session Summary
+
+Generate a human-readable Markdown summary from the session report. Includes configuration, feature flags, audio pre-check results (if present), diarization statistics, and output file paths.
+
+```bash
+# During a live session
+python -m app.main --config config.yaml --export-summary
+
+# From an existing session
+python -m app.main --session 2026-03-01_10-00-00 --export-summary
+```
+
+Output file: `session_summary_<timestamp>.md` in the output directory. Uses the in-memory report dict during live sessions, or loads `session_report_<timestamp>.json` in standalone mode.
+
+### Standalone Session Export
+
+Export subtitles and summaries from existing sessions without re-recording. Uses `--session` with export flags. No audio device or ASR initialization occurs.
+
+```bash
+# Export SRT from an existing session
+python -m app.main --session 2026-03-01_10-00-00 --export-srt
+
+# Export VTT and summary together
+python -m app.main --session 2026-03-01_10-00-00 --export-vtt --export-summary
+
+# All exports at once
+python -m app.main --session 2026-03-01_10-00-00 --export-srt --export-vtt --export-summary
+```
+
+Subtitle export reads `diarized_segments_<timestamp>.json` and `normalized_<timestamp>_<model>.json`, joining segments by `seg_id` for text lookup. Summary export reads `session_report_<timestamp>.json`.
+
+If required files are missing, a clear error is printed and the process exits with a non-zero code.
+
 ### Lexicons
 
 Lexicons live in `resources/lexicons/<language>/`:
@@ -674,7 +708,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-337 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), and end-to-end integration (full pipeline without live microphone).
+360 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

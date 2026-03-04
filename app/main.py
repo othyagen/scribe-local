@@ -1160,6 +1160,56 @@ def main() -> None:
             )
             print(f"Tagged transcript: {labeled}")
 
+        # ── standalone exports ───────────────────────────────────
+        export_srt = getattr(args, "export_srt", False)
+        export_vtt = getattr(args, "export_vtt", False)
+        export_summary = getattr(args, "export_summary", False)
+
+        if export_srt or export_vtt:
+            diarized_seg_path = Path(config.output_dir) / f"diarized_segments_{ts}.json"
+            if not diarized_seg_path.exists():
+                print(f"Error: diarized segments not found for session {ts}")
+                sys.exit(1)
+            # Find normalized JSON for text lookup
+            norm_files = sorted(Path(config.output_dir).glob(
+                f"normalized_{ts}*.json"
+            ))
+            if not norm_files:
+                print(f"Error: normalized segments not found for session {ts}")
+                sys.exit(1)
+            with open(diarized_seg_path, encoding="utf-8") as f:
+                diar_segs = json.load(f)
+            with open(norm_files[-1], encoding="utf-8") as f:
+                norm_segs = json.load(f)
+            text_by_seg = {s["seg_id"]: s.get("normalized_text", "") for s in norm_segs}
+            subtitle_segs = [
+                {
+                    "t0": ds["t0"],
+                    "t1": ds["t1"],
+                    "speaker": ds["new_speaker_id"],
+                    "text": text_by_seg.get(ds["seg_id"], ""),
+                }
+                for ds in diar_segs
+            ]
+            from app.export_subtitles import write_srt, write_vtt
+            if export_srt:
+                srt_path = write_srt(subtitle_segs, config.output_dir, ts)
+                print(f"SRT subtitles    : {srt_path}")
+            if export_vtt:
+                vtt_path = write_vtt(subtitle_segs, config.output_dir, ts)
+                print(f"VTT subtitles    : {vtt_path}")
+
+        if export_summary:
+            report_path = Path(config.output_dir) / f"session_report_{ts}.json"
+            if not report_path.exists():
+                print(f"Error: session report not found for session {ts}")
+                sys.exit(1)
+            with open(report_path, encoding="utf-8") as f:
+                report = json.load(f)
+            from app.export_summary import write_summary
+            summary_path = write_summary(report, config.output_dir, ts)
+            print(f"Session summary  : {summary_path}")
+
         sys.exit(0)
 
     try:

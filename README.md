@@ -104,6 +104,9 @@ python -m app.main --output-dir my_session
 | `--export-srt` | Export diarized transcript as SRT subtitle file |
 | `--export-vtt` | Export diarized transcript as WebVTT subtitle file |
 | `--export-summary` | Export session summary as Markdown file |
+| `--add-term FROM=TO` | Add or update a custom lexicon term (e.g. `--add-term pt=patient`) |
+| `--remove-term FROM` | Remove a custom lexicon term (e.g. `--remove-term pt`) |
+| `--list-terms` | List all custom lexicon terms and exit |
 
 ### Stopping
 
@@ -173,6 +176,7 @@ Each layer has a single responsibility:
 | `io.py` | Write all output files |
 | `config.py` | Configuration loading and CLI argument parsing |
 | `tagging.py` | Speaker tag/label assignment and tagged transcript generation |
+| `lexicon_manager.py` | CLI lexicon management (add, remove, list custom terms) |
 | `main.py` | Pipeline orchestration |
 
 ### Speaker Diarization
@@ -591,6 +595,29 @@ Each file uses this format:
 
 Priority order: `custom` > `medical` > `general`. Exact matches are applied first, then fuzzy matches above the configured threshold (default: 0.92).
 
+#### Lexicon Management CLI
+
+Add, update, remove, and list custom lexicon terms from the command line. All operations target the `custom.json` file (highest priority). No audio or ASR initialization occurs.
+
+```bash
+# Add a new term
+python -m app.main --language en --add-term "pt=patient"
+
+# Update an existing term
+python -m app.main --language en --add-term "pt=Patient (updated)"
+
+# Remove a term
+python -m app.main --language en --remove-term pt
+
+# List all custom terms (sorted alphabetically)
+python -m app.main --language en --list-terms
+
+# Combine add and list
+python -m app.main --language da --add-term "afd=afdeling" --list-terms
+```
+
+Terms are validated: both FROM and TO must be non-empty and must not have leading or trailing whitespace. Multi-word terms are supported (e.g. `--add-term "blood presure=blood pressure"`).
+
 ### Confidence Report
 
 Each session produces a `confidence_report_<timestamp>.json` that flags segments with low ASR quality. This is a diagnostic-only layer — RAW and normalized outputs are never modified.
@@ -708,7 +735,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-360 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), and end-to-end integration (full pipeline without live microphone).
+386 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

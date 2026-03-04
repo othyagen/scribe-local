@@ -295,4 +295,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Export diarized transcript as WebVTT subtitle file")
     p.add_argument("--export-summary", action="store_true", default=False,
                     help="Export session summary as Markdown file")
+
+    # Lexicon management
+    p.add_argument("--add-term", type=str, default=None,
+                    metavar="FROM=TO",
+                    help="Add or update a custom lexicon term (e.g. --add-term pt=patient)")
+    p.add_argument("--remove-term", type=str, default=None,
+                    metavar="FROM",
+                    help="Remove a custom lexicon term (e.g. --remove-term pt)")
+    p.add_argument("--list-terms", action="store_true", default=False,
+                    help="List all custom lexicon terms and exit")
     return p

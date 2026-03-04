@@ -1079,6 +1079,53 @@ def main() -> None:
         print(f"Error: unsupported language '{config.language}'. Use da, sv, or en.")
         sys.exit(1)
 
+    # Lexicon management (early exit — no audio/ASR)
+    add_term_arg = getattr(args, "add_term", None)
+    remove_term_arg = getattr(args, "remove_term", None)
+    list_terms_arg = getattr(args, "list_terms", False)
+
+    if add_term_arg or remove_term_arg or list_terms_arg:
+        from app.lexicon_manager import (
+            add_term, remove_term, list_terms,
+            format_term_list, validate_term,
+        )
+        lexicon_dir = config.normalization.lexicon_dir
+        lang = config.language
+
+        if add_term_arg:
+            if "=" not in add_term_arg:
+                print("Error: --add-term requires FROM=TO format")
+                sys.exit(1)
+            from_text, to_text = add_term_arg.split("=", 1)
+            err = validate_term(from_text)
+            if err:
+                print(f"Error: invalid FROM term — {err}")
+                sys.exit(1)
+            err = validate_term(to_text)
+            if err:
+                print(f"Error: invalid TO term — {err}")
+                sys.exit(1)
+            action, _ = add_term(lexicon_dir, lang, from_text, to_text)
+            print(f"Term {action}: {from_text} → {to_text} [{lang}]")
+
+        if remove_term_arg:
+            err = validate_term(remove_term_arg)
+            if err:
+                print(f"Error: invalid term — {err}")
+                sys.exit(1)
+            removed = remove_term(lexicon_dir, lang, remove_term_arg)
+            if removed:
+                print(f"Term removed: {remove_term_arg} [{lang}]")
+            else:
+                print(f"Term not found: {remove_term_arg} [{lang}]")
+
+        if list_terms_arg:
+            terms = list_terms(lexicon_dir, lang)
+            print(f"Custom lexicon terms [{lang}]:")
+            print(format_term_list(terms))
+
+        sys.exit(0)
+
     # Mutual exclusion: --resume and --session
     if getattr(args, "resume", None) and args.session:
         print("Error: --resume and --session are mutually exclusive")

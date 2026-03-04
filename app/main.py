@@ -986,6 +986,190 @@ def _print_session_detail(info: dict) -> None:
         print(f"  {label:<20}: {path}")
 
 
+# ── reprocess existing session ────────────────────────────────────────
+
+def _atomic_write_json(path: Path, data: object) -> None:
+    """Write JSON atomically via a temp file + os.replace."""
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(str(tmp), str(path))
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write text atomically via a temp file + os.replace."""
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(str(tmp), str(path))
+
+
+def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None:
+    """Re-normalize (and optionally re-export) an existing session from RAW."""
+    out = Path(config.output_dir)
+
+    # 1. Find RAW file
+    raw_candidates = list(out.glob(f"raw_{session_ts}_*.json"))
+    if not raw_candidates:
+        print(f"Error: no RAW file found for session {session_ts} in {config.output_dir}")
+        sys.exit(1)
+    if len(raw_candidates) > 1:
+        print(f"Error: multiple RAW files for session {session_ts}: {raw_candidates}")
+        sys.exit(1)
+
+    raw_path = raw_candidates[0]
+    prefix = f"raw_{session_ts}_"
+    model_tag = raw_path.stem[len(prefix):]
+
+    # 2. Read RAW JSONL segments
+    segments: list[RawSegment] = []
+    with open(raw_path, encoding="utf-8") as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+                segments.append(RawSegment.from_dict(d))
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Warning: skipping corrupt line {line_num} in {raw_path}: {e}")
+
+    if not segments:
+        print(f"Error: no valid segments in {raw_path}")
+        sys.exit(1)
+
+    print(f"Reprocessing session {session_ts} ({len(segments)} segments)")
+    print(f"  Model tag     : {model_tag}")
+
+    # 3. Re-normalize with current lexicons
+    normalizer = Normalizer(config)
+    normalized_list: list[dict] = []
+    changes_list: list[dict] = []
+    txt_lines: list[str] = []
+
+    for seg in segments:
+        norm_seg, changes = normalizer.normalize(seg)
+        normalized_list.append(norm_seg.to_dict())
+        for c in changes:
+            changes_list.append(c.to_dict())
+        txt_lines.append(norm_seg.to_txt_line())
+
+    # 4. Write outputs atomically
+    norm_json_path = out / f"normalized_{session_ts}_{model_tag}.json"
+    norm_txt_path = out / f"normalized_{session_ts}_{model_tag}.txt"
+    changes_json_path = out / f"changes_{session_ts}_{model_tag}.json"
+
+    _atomic_write_json(norm_json_path, normalized_list)
+    _atomic_write_text(norm_txt_path, "\n".join(txt_lines) + "\n" if txt_lines else "")
+    _atomic_write_json(changes_json_path, changes_list)
+
+    print(f"  Normalized    : {norm_json_path}")
+    print(f"  Changes       : {changes_json_path}")
+
+    outputs_regenerated = ["normalized", "changes"]
+
+    # 5. Re-run relabeling if diarization exists
+    diar_path = out / f"diarization_{session_ts}.json"
+    diarized_json: Path | None = None
+    diarized_txt: Path | None = None
+
+    if diar_path.exists():
+        try:
+            diarized_json, diarized_txt = relabel_segments(
+                norm_json_path, diar_path, config.output_dir
+            )
+            outputs_regenerated.append("diarized_segments")
+            print(f"  Diarized segs : {diarized_json}")
+        except Exception as e:
+            print(f"  Warning: relabeling failed: {e}")
+
+    # 6. Re-run speaker tagging if tags exist
+    tagged_txt: Path | None = None
+    if diarized_txt:
+        tags_path = out / f"speaker_tags_{session_ts}.json"
+        if tags_path.exists():
+            from app.tagging import (
+                load_or_create_tags, save_tags,
+                generate_tag_labeled_txt,
+            )
+            tags = load_or_create_tags(config.output_dir, session_ts)
+            save_tags(tags, config.output_dir, session_ts)
+            tagged_txt = generate_tag_labeled_txt(
+                diarized_txt, tags, config.output_dir, session_ts
+            )
+            outputs_regenerated.append("tagged")
+            print(f"  Tagged        : {tagged_txt}")
+
+    # 7. Exports (if requested)
+    export_srt = getattr(args, "export_srt", False)
+    export_vtt = getattr(args, "export_vtt", False)
+    export_summary = getattr(args, "export_summary", False)
+    srt_path: Path | None = None
+    vtt_path: Path | None = None
+
+    if (export_srt or export_vtt) and diarized_json:
+        from app.export_subtitles import write_srt, write_vtt
+        with open(diarized_json, encoding="utf-8") as f:
+            diar_segs = json.load(f)
+        text_by_seg = {s["seg_id"]: s.get("normalized_text", "") for s in normalized_list}
+        subtitle_segs = [
+            {
+                "t0": ds["t0"],
+                "t1": ds["t1"],
+                "speaker": ds["new_speaker_id"],
+                "text": text_by_seg.get(ds["seg_id"], ""),
+            }
+            for ds in diar_segs
+        ]
+        if export_srt:
+            srt_path = write_srt(subtitle_segs, config.output_dir, session_ts)
+            outputs_regenerated.append("srt")
+            print(f"  SRT           : {srt_path}")
+        if export_vtt:
+            vtt_path = write_vtt(subtitle_segs, config.output_dir, session_ts)
+            outputs_regenerated.append("vtt")
+            print(f"  VTT           : {vtt_path}")
+
+    # 8. Session report
+    if config.reporting.session_report_enabled:
+        from app.reporting import build_session_report, write_session_report
+        output_paths = {
+            "raw": str(raw_path),
+            "normalized": str(norm_json_path),
+            "changes": str(changes_json_path),
+            "diarization": str(diar_path) if diar_path.exists() else None,
+            "diarized_segments": str(diarized_json) if diarized_json else None,
+            "diarized_txt": str(diarized_txt) if diarized_txt else None,
+            "tagged_txt": str(tagged_txt) if tagged_txt else None,
+            "srt": str(srt_path) if srt_path else None,
+            "vtt": str(vtt_path) if vtt_path else None,
+        }
+        sr = build_session_report(
+            session_ts=session_ts,
+            config=config,
+            segment_count=len(segments),
+            output_paths=output_paths,
+        )
+        sr["reprocess"] = {
+            "reprocess_ts": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+            "inputs": [k for k, v in {
+                "raw": True,
+                "diarization": diar_path.exists(),
+            }.items() if v],
+            "outputs_regenerated": outputs_regenerated,
+        }
+        report_path = write_session_report(sr, config.output_dir, session_ts)
+        print(f"  Session report: {report_path}")
+
+        if export_summary:
+            from app.export_summary import write_summary
+            summary_path = write_summary(sr, config.output_dir, session_ts)
+            outputs_regenerated.append("summary")
+            print(f"  Summary       : {summary_path}")
+
+    print(f"Reprocessing complete. {len(segments)} segments re-normalized.")
+
+
 # ── entry point ──────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1124,6 +1308,12 @@ def main() -> None:
             print(f"Custom lexicon terms [{lang}]:")
             print(format_term_list(terms))
 
+        sys.exit(0)
+
+    # --reprocess: re-normalize existing session and exit
+    reprocess_ts = getattr(args, "reprocess", None)
+    if reprocess_ts:
+        _reprocess_session(config, args, reprocess_ts)
         sys.exit(0)
 
     # Mutual exclusion: --resume and --session

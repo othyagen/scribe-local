@@ -296,6 +296,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--export-summary", action="store_true", default=False,
                     help="Export session summary as Markdown file")
 
+    # Reprocess existing session
+    p.add_argument("--reprocess", type=str, default=None,
+                    metavar="TIMESTAMP",
+                    help="Reprocess an existing session (re-normalize, re-export) and exit")
+
     # Lexicon management
     p.add_argument("--add-term", type=str, default=None,
                     metavar="FROM=TO",

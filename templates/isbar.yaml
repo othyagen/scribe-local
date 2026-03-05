@@ -1,0 +1,19 @@
+name: ISBAR Handover
+format: markdown
+sections:
+  - title: Identification
+    extractors: []
+    scope: clinician_only
+  - title: Situation
+    extractors: [symptoms, negations, durations]
+    scope: all
+  - title: Background
+    extractors: [medications, durations]
+    scope: all
+  - title: Assessment
+    extractors: [symptoms, negations]
+    scope: clinician_only
+  - title: Recommendation
+    extractors: [medications, durations]
+    scope: clinician_only
+transcript_section: true

@@ -659,6 +659,9 @@ python -m app.main --config config.yaml --export-clinical-note
 
 # Use a specific template
 python -m app.main --config config.yaml --export-clinical-note --note-template soap
+python -m app.main --config config.yaml --export-clinical-note --note-template isbar
+python -m app.main --config config.yaml --export-clinical-note --note-template referral
+python -m app.main --config config.yaml --export-clinical-note --note-template summary
 
 # From an existing session
 python -m app.main --session 2026-03-01_10-00-00 --export-clinical-note
@@ -673,7 +676,16 @@ Output file: `clinical_note_<timestamp>_<template>.md` (or `.txt` for text-forma
 
 Templates are YAML files in the `templates/` directory. Each template defines named sections with optional extractors and speaker scope.
 
-The included `soap.yaml` template:
+Included templates:
+
+| Template | Description |
+|----------|-------------|
+| `soap` | SOAP note — Subjective, Objective, Assessment, Plan (default) |
+| `isbar` | ISBAR clinical handover — Identification, Situation, Background, Assessment, Recommendation |
+| `referral` | Specialist referral — Nordic clinical style with Danish/English section names |
+| `summary` | Short consultation summary — Problem, Patient history, Assessment, Plan |
+
+The `soap.yaml` template:
 
 ```yaml
 name: SOAP Note

@@ -1,0 +1,22 @@
+name: Specialist Referral
+format: markdown
+sections:
+  - title: Problemstilling
+    extractors: [symptoms, durations]
+    scope: clinician_only
+  - title: Anamnese
+    extractors: [symptoms, negations, durations]
+    scope: patient_only
+  - title: Status / Fund
+    extractors: []
+    scope: all
+  - title: Vurdering
+    extractors: [symptoms, negations]
+    scope: clinician_only
+  - title: Aktuel medicin
+    extractors: [medications]
+    scope: all
+  - title: "Ønske / Requested assessment"
+    extractors: []
+    scope: clinician_only
+transcript_section: true

@@ -1,0 +1,16 @@
+name: Consultation Summary
+format: markdown
+sections:
+  - title: Problem
+    extractors: [symptoms, durations]
+    scope: clinician_only
+  - title: Patient history
+    extractors: [symptoms, negations, durations]
+    scope: patient_only
+  - title: Assessment
+    extractors: [symptoms]
+    scope: clinician_only
+  - title: Plan
+    extractors: [medications, durations]
+    scope: clinician_only
+transcript_section: true

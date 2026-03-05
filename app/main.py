@@ -830,6 +830,32 @@ def run(config: AppConfig, args: object = None) -> None:
                 vtt_path = write_vtt(subtitle_segs, config.output_dir, sub_ts)
                 print(f"[{_ts()}] VTT export: {vtt_path}")
 
+        # Clinical note export
+        clinical_note_path = None
+        if getattr(args, "export_clinical_note", False):
+            from app.export_clinical_note import (
+                load_template, write_clinical_note, _template_needs_roles,
+            )
+            template_id = _resolve_template_id(args)
+            try:
+                template = load_template(template_id)
+                with open(writer.normalized_json_path, encoding="utf-8") as f:
+                    cn_norm_segs = json.load(f)
+                cn_roles = None
+                if _template_needs_roles(template):
+                    from app.role_detection import detect_speaker_roles
+                    cn_roles = detect_speaker_roles(
+                        cn_norm_segs, config.language,
+                    )
+                session_ts = writer.raw_json_path.stem[4:23]
+                clinical_note_path = write_clinical_note(
+                    cn_norm_segs, template, config.output_dir,
+                    session_ts, template_id, speaker_roles=cn_roles,
+                )
+                print(f"[{_ts()}] Clinical note: {clinical_note_path}")
+            except FileNotFoundError as e:
+                print(f"[{_ts()}] Clinical note export failed: {e}")
+
         # Confidence report
         confidence_report_path = None
         if confidence_entries:
@@ -866,6 +892,8 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"SRT subtitles      : {srt_path}")
         if vtt_path:
             print(f"VTT subtitles      : {vtt_path}")
+        if clinical_note_path:
+            print(f"Clinical note      : {clinical_note_path}")
 
         # Session report (consolidated summary)
         session_report_path = None
@@ -886,6 +914,7 @@ def run(config: AppConfig, args: object = None) -> None:
                 "confidence_report": str(confidence_report_path) if confidence_report_path else None,
                 "srt": str(srt_path) if srt_path else None,
                 "vtt": str(vtt_path) if vtt_path else None,
+                "clinical_note": str(clinical_note_path) if clinical_note_path else None,
             }
             diar_stats = {
                 "turns_before_smoothing": turns_before_smoothing,
@@ -984,6 +1013,16 @@ def _print_session_detail(info: dict) -> None:
     print("Files:")
     for label, path in info.get("files", {}).items():
         print(f"  {label:<20}: {path}")
+
+
+# ── template alias resolution ─────────────────────────────────────────
+
+def _resolve_template_id(args: object) -> str:
+    """Resolve note template ID from --note-template or --template alias."""
+    alias = getattr(args, "template_alias", None)
+    if alias is not None:
+        return alias
+    return getattr(args, "note_template", "soap")
 
 
 # ── reprocess existing session ────────────────────────────────────────
@@ -1130,6 +1169,31 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
             outputs_regenerated.append("vtt")
             print(f"  VTT           : {vtt_path}")
 
+    # Clinical note export
+    export_clinical_note = getattr(args, "export_clinical_note", False)
+    clinical_note_path: Path | None = None
+    if export_clinical_note:
+        from app.export_clinical_note import (
+            load_template, write_clinical_note, _template_needs_roles,
+        )
+        template_id = _resolve_template_id(args)
+        try:
+            template = load_template(template_id)
+            cn_roles = None
+            if _template_needs_roles(template):
+                from app.role_detection import detect_speaker_roles
+                cn_roles = detect_speaker_roles(
+                    normalized_list, config.language,
+                )
+            clinical_note_path = write_clinical_note(
+                normalized_list, template, config.output_dir,
+                session_ts, template_id, speaker_roles=cn_roles,
+            )
+            outputs_regenerated.append("clinical_note")
+            print(f"  Clinical note : {clinical_note_path}")
+        except FileNotFoundError as e:
+            print(f"  Warning: clinical note export failed: {e}")
+
     # 8. Session report
     if config.reporting.session_report_enabled:
         from app.reporting import build_session_report, write_session_report
@@ -1143,6 +1207,7 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
             "tagged_txt": str(tagged_txt) if tagged_txt else None,
             "srt": str(srt_path) if srt_path else None,
             "vtt": str(vtt_path) if vtt_path else None,
+            "clinical_note": str(clinical_note_path) if clinical_note_path else None,
         }
         sr = build_session_report(
             session_ts=session_ts,
@@ -1446,6 +1511,37 @@ def main() -> None:
             from app.export_summary import write_summary
             summary_path = write_summary(report, config.output_dir, ts)
             print(f"Session summary  : {summary_path}")
+
+        export_clinical_note = getattr(args, "export_clinical_note", False)
+        if export_clinical_note:
+            norm_files = sorted(Path(config.output_dir).glob(
+                f"normalized_{ts}*.json"
+            ))
+            if not norm_files:
+                print(f"Error: normalized segments not found for session {ts}")
+                sys.exit(1)
+            with open(norm_files[-1], encoding="utf-8") as f:
+                cn_norm_segs = json.load(f)
+            from app.export_clinical_note import (
+                load_template, write_clinical_note, _template_needs_roles,
+            )
+            template_id = _resolve_template_id(args)
+            try:
+                template = load_template(template_id)
+                cn_roles = None
+                if _template_needs_roles(template):
+                    from app.role_detection import detect_speaker_roles
+                    cn_roles = detect_speaker_roles(
+                        cn_norm_segs, config.language,
+                    )
+                note_path = write_clinical_note(
+                    cn_norm_segs, template, config.output_dir, ts, template_id,
+                    speaker_roles=cn_roles,
+                )
+                print(f"Clinical note    : {note_path}")
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
 
         sys.exit(0)
 

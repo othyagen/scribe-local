@@ -1,0 +1,16 @@
+name: SOAP Note
+format: markdown
+sections:
+  - title: Subjective
+    extractors: [symptoms, negations, durations]
+    scope: patient_only
+  - title: Objective
+    extractors: []
+    scope: all
+  - title: Assessment
+    extractors: [symptoms, negations]
+    scope: all
+  - title: Plan
+    extractors: [medications, durations]
+    scope: clinician_only
+transcript_section: true

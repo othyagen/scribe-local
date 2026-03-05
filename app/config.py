@@ -296,6 +296,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--export-summary", action="store_true", default=False,
                     help="Export session summary as Markdown file")
 
+    # Clinical note export
+    p.add_argument("--export-clinical-note", action="store_true", default=False,
+                    help="Export clinical note from normalized transcript")
+    p.add_argument("--note-template", type=str, default="soap",
+                    dest="note_template",
+                    help="Clinical note template ID (default: soap)")
+    p.add_argument("--template", type=str, default=None,
+                    dest="template_alias",
+                    help=argparse.SUPPRESS)  # backward-compat alias
+
     # Reprocess existing session
     p.add_argument("--reprocess", type=str, default=None,
                     metavar="TIMESTAMP",

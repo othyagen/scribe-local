@@ -177,6 +177,8 @@ Each layer has a single responsibility:
 | `config.py` | Configuration loading and CLI argument parsing |
 | `tagging.py` | Speaker tag/label assignment and tagged transcript generation |
 | `lexicon_manager.py` | CLI lexicon management (add, remove, list custom terms) |
+| `extractors.py` | Deterministic symptom/medication/negation/duration extraction |
+| `extractor_vocab.py` | Load extractor vocabularies from external JSON files |
 | `main.py` | Pipeline orchestration |
 
 ### Speaker Diarization
@@ -618,6 +620,30 @@ python -m app.main --language da --add-term "afd=afdeling" --list-terms
 
 Terms are validated: both FROM and TO must be non-empty and must not have leading or trailing whitespace. Multi-word terms are supported (e.g. `--add-term "blood presure=blood pressure"`).
 
+### Extractor Vocabularies
+
+The clinical note extractors use keyword lists for symptom and medication detection. These vocabularies are loaded from external JSON files, making them easy to extend without modifying code.
+
+Vocabulary files live in `resources/extractors/`:
+
+```
+resources/extractors/
+  symptoms.json      # Symptom keywords (e.g. "headache", "chest pain")
+  medications.json   # Medication keywords (e.g. "ibuprofen", "metformin")
+```
+
+Each file is a JSON array of lowercase strings:
+
+```json
+[
+    "headache",
+    "nausea",
+    "shortness of breath"
+]
+```
+
+To add custom terms, edit the JSON files directly. The extractors pick up changes on next import (process restart). If a file is missing, built-in defaults are used automatically. Invalid JSON triggers a warning to stderr and falls back to defaults.
+
 ### Confidence Report
 
 Each session produces a `confidence_report_<timestamp>.json` that flags segments with low ASR quality. This is a diagnostic-only layer — RAW and normalized outputs are never modified.
@@ -735,7 +761,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-386 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), and end-to-end integration (full pipeline without live microphone).
+497 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

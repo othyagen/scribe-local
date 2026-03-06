@@ -107,6 +107,8 @@ python -m app.main --output-dir my_session
 | `--export-clinical-note` | Export clinical note from normalized transcript |
 | `--note-template ID` | Clinical note template ID (default: `soap`) |
 | `--export-notes IDS` | Export multiple clinical notes (comma-separated template IDs) |
+| `--reprocess TIMESTAMP` | Reprocess a single session (re-normalize, re-export) and exit |
+| `--reprocess-all` | Reprocess all sessions (re-normalize, re-export) and exit |
 | `--add-term FROM=TO` | Add or update a custom lexicon term (e.g. `--add-term pt=patient`) |
 | `--remove-term FROM` | Remove a custom lexicon term (e.g. `--remove-term pt`) |
 | `--list-terms` | List all custom lexicon terms and exit |
@@ -791,6 +793,44 @@ Part files are never deleted — both parts and the concatenated WAV are preserv
 
 `--resume` and `--session` are mutually exclusive.
 
+### Reprocessing
+
+Re-normalize and re-export existing sessions from their immutable RAW transcripts. Useful after updating lexicons, templates, or extractor vocabularies. Does **not** re-run ASR or diarization.
+
+```bash
+# Reprocess a single session
+python -m app.main --reprocess 2026-03-01_10-00-00
+
+# Reprocess with exports
+python -m app.main --reprocess 2026-03-01_10-00-00 --export-srt --export-clinical-note
+```
+
+#### Batch reprocessing
+
+Reprocess **all** sessions in the output directory in one command:
+
+```bash
+python -m app.main --reprocess-all
+
+# With exports applied to every session
+python -m app.main --reprocess-all --export-clinical-note --note-template soap
+```
+
+Sessions are processed oldest-first. If one session fails (corrupt RAW, no valid segments), processing continues with the next. A summary is printed at the end:
+
+```
+Found 12 sessions.
+[1/12] 2026-03-01_10-00-00 ... OK
+[2/12] 2026-03-01_14-30-00 ... FAILED: no valid segments in ...
+...
+Summary
+  Found:     12
+  Succeeded: 11
+  Failed:    1
+```
+
+RAW transcripts are never modified — only derived outputs (normalized, changes, diarized segments, tags, reports, exports) are regenerated.
+
 ### Session Browser
 
 Inspect past sessions without recording:
@@ -868,7 +908,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-515 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), and end-to-end integration (full pipeline without live microphone).
+526 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

@@ -54,6 +54,10 @@ class ResumeError(ValueError):
     """Raised when session resume validation fails."""
 
 
+class ReprocessError(Exception):
+    """Raised when session reprocessing cannot proceed."""
+
+
 def load_resume_state(
     output_dir: str,
     session_ts: str,
@@ -1133,11 +1137,13 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
     # 1. Find RAW file
     raw_candidates = list(out.glob(f"raw_{session_ts}_*.json"))
     if not raw_candidates:
-        print(f"Error: no RAW file found for session {session_ts} in {config.output_dir}")
-        sys.exit(1)
+        raise ReprocessError(
+            f"no RAW file found for session {session_ts} in {config.output_dir}"
+        )
     if len(raw_candidates) > 1:
-        print(f"Error: multiple RAW files for session {session_ts}: {raw_candidates}")
-        sys.exit(1)
+        raise ReprocessError(
+            f"multiple RAW files for session {session_ts}: {raw_candidates}"
+        )
 
     raw_path = raw_candidates[0]
     prefix = f"raw_{session_ts}_"
@@ -1157,8 +1163,7 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
                 print(f"Warning: skipping corrupt line {line_num} in {raw_path}: {e}")
 
     if not segments:
-        print(f"Error: no valid segments in {raw_path}")
-        sys.exit(1)
+        raise ReprocessError(f"no valid segments in {raw_path}")
 
     print(f"Reprocessing session {session_ts} ({len(segments)} segments)")
     print(f"  Model tag     : {model_tag}")
@@ -1334,6 +1339,56 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
     print(f"Reprocessing complete. {len(segments)} segments re-normalized.")
 
 
+# ── batch reprocess ───────────────────────────────────────────────────
+
+def _discover_all_sessions(output_dir: str) -> list[tuple[str, Path]]:
+    """Find all RAW files and return (timestamp, path) sorted oldest-first."""
+    out = Path(output_dir)
+    raw_files = sorted(out.glob("raw_*_*.json"))
+    results: list[tuple[str, Path]] = []
+    for p in raw_files:
+        # Timestamp is chars 4..23 of the stem: raw_YYYY-MM-DD_HH-MM-SS_model
+        stem = p.stem
+        if len(stem) < 23:
+            continue
+        ts = stem[4:23]
+        results.append((ts, p))
+    return results
+
+
+def _reprocess_all(config: AppConfig, args: object) -> None:
+    """Reprocess all sessions in the output directory."""
+    sessions = _discover_all_sessions(config.output_dir)
+    total = len(sessions)
+    print(f"Found {total} sessions.")
+
+    if total == 0:
+        print()
+        print("Summary")
+        print(f"  Found:     0")
+        print(f"  Succeeded: 0")
+        print(f"  Failed:    0")
+        return
+
+    succeeded = 0
+    failed = 0
+
+    for i, (ts, raw_path) in enumerate(sessions, 1):
+        try:
+            _reprocess_session(config, args, ts)
+            succeeded += 1
+            print(f"[{i}/{total}] {ts} ... OK")
+        except Exception as e:
+            failed += 1
+            print(f"[{i}/{total}] {ts} ... FAILED: {e}")
+
+    print()
+    print("Summary")
+    print(f"  Found:     {total}")
+    print(f"  Succeeded: {succeeded}")
+    print(f"  Failed:    {failed}")
+
+
 # ── entry point ──────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1474,10 +1529,19 @@ def main() -> None:
 
         sys.exit(0)
 
+    # --reprocess-all: batch reprocess all sessions and exit
+    if getattr(args, "reprocess_all", False):
+        _reprocess_all(config, args)
+        sys.exit(0)
+
     # --reprocess: re-normalize existing session and exit
     reprocess_ts = getattr(args, "reprocess", None)
     if reprocess_ts:
-        _reprocess_session(config, args, reprocess_ts)
+        try:
+            _reprocess_session(config, args, reprocess_ts)
+        except ReprocessError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
         sys.exit(0)
 
     # Mutual exclusion: --resume and --session

@@ -11,7 +11,7 @@ import pytest
 
 from app.config import AppConfig, NormalizationConfig
 from app.commit import RawSegment
-from app.main import _reprocess_session, _atomic_write_json, _atomic_write_text
+from app.main import _reprocess_session, _atomic_write_json, _atomic_write_text, ReprocessError
 
 
 TS = "2026-03-01_10-00-00"
@@ -344,9 +344,8 @@ class TestReprocessErrors:
         _write_lexicon(lexicon_dir, "en", {})
 
         config = _make_config(output_dir, lexicon_dir)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ReprocessError, match="no RAW file found"):
             _reprocess_session(config, _FakeArgs(), "1999-01-01_00-00-00")
-        assert exc_info.value.code == 1
 
     def test_multiple_raw_files(self, tmp_path):
         """Clear error for ambiguous session (multiple RAW files)."""
@@ -360,9 +359,8 @@ class TestReprocessErrors:
         raw2.write_text(json.dumps(_raw_seg(1, "B.")) + "\n", encoding="utf-8")
 
         config = _make_config(output_dir, lexicon_dir)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ReprocessError, match="multiple RAW files"):
             _reprocess_session(config, _FakeArgs(), TS)
-        assert exc_info.value.code == 1
 
     def test_corrupt_raw_jsonl(self, tmp_path):
         """Handles malformed line gracefully (skip + warn)."""

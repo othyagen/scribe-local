@@ -852,9 +852,15 @@ def run(config: AppConfig, args: object = None) -> None:
                         cn_norm_segs, config.language,
                     )
                 session_ts = writer.raw_json_path.stem[4:23]
+                from app.review_flags import generate_review_flags
+                review_flags = generate_review_flags(
+                    cn_norm_segs,
+                    confidence_entries=confidence_entries or None,
+                )
                 clinical_note_path = write_clinical_note(
                     cn_norm_segs, template, config.output_dir,
                     session_ts, template_id, speaker_roles=cn_roles,
+                    review_flags=review_flags,
                 )
                 print(f"[{_ts()}] Clinical note: {clinical_note_path}")
             except FileNotFoundError as e:
@@ -871,6 +877,7 @@ def run(config: AppConfig, args: object = None) -> None:
                 clinical_note_paths = _export_multi_notes(
                     multi_template_ids, mn_norm_segs,
                     config.output_dir, session_ts, config.language,
+                    confidence_entries=confidence_entries or None,
                 )
                 for p in clinical_note_paths:
                     print(f"[{_ts()}] Clinical note: {p}")
@@ -1085,6 +1092,7 @@ def _export_multi_notes(
     output_dir: str,
     session_ts: str,
     language: str,
+    confidence_entries: list[dict] | None = None,
 ) -> list[Path]:
     """Generate clinical notes for multiple templates. Returns list of paths."""
     from app.export_clinical_note import (
@@ -1102,11 +1110,18 @@ def _export_multi_notes(
         from app.role_detection import detect_speaker_roles
         roles = detect_speaker_roles(segments, language)
 
+    # Generate review flags once for all templates
+    from app.review_flags import generate_review_flags
+    review_flags = generate_review_flags(
+        segments, confidence_entries=confidence_entries,
+    )
+
     paths: list[Path] = []
     for tid, template in templates:
         p = write_clinical_note(
             segments, template, output_dir, session_ts, tid,
             speaker_roles=roles,
+            review_flags=review_flags,
         )
         paths.append(p)
     return paths
@@ -1257,6 +1272,17 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
             outputs_regenerated.append("vtt")
             print(f"  VTT           : {vtt_path}")
 
+    # Load confidence entries for review flags (if available)
+    reprocess_confidence_entries = None
+    conf_candidates = list(out.glob(f"confidence_report_{session_ts}.json"))
+    if conf_candidates:
+        try:
+            with open(conf_candidates[0], encoding="utf-8") as f:
+                conf_report = json.load(f)
+            reprocess_confidence_entries = conf_report.get("segments")
+        except (json.JSONDecodeError, KeyError):
+            pass
+
     # Clinical note export
     export_clinical_note = getattr(args, "export_clinical_note", False)
     clinical_note_path: Path | None = None
@@ -1273,9 +1299,15 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
                 cn_roles = detect_speaker_roles(
                     normalized_list, config.language,
                 )
+            from app.review_flags import generate_review_flags
+            review_flags = generate_review_flags(
+                normalized_list,
+                confidence_entries=reprocess_confidence_entries,
+            )
             clinical_note_path = write_clinical_note(
                 normalized_list, template, config.output_dir,
                 session_ts, template_id, speaker_roles=cn_roles,
+                review_flags=review_flags,
             )
             outputs_regenerated.append("clinical_note")
             print(f"  Clinical note : {clinical_note_path}")
@@ -1290,6 +1322,7 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
             clinical_note_paths = _export_multi_notes(
                 multi_template_ids, normalized_list,
                 config.output_dir, session_ts, config.language,
+                confidence_entries=reprocess_confidence_entries,
             )
             for p in clinical_note_paths:
                 outputs_regenerated.append("clinical_note")
@@ -1683,6 +1716,19 @@ def main() -> None:
             summary_path = write_summary(report, config.output_dir, ts)
             print(f"Session summary  : {summary_path}")
 
+        # Load confidence entries for review flags (standalone)
+        standalone_confidence_entries = None
+        conf_files = sorted(Path(config.output_dir).glob(
+            f"confidence_report_{ts}.json"
+        ))
+        if conf_files:
+            try:
+                with open(conf_files[-1], encoding="utf-8") as f:
+                    conf_data = json.load(f)
+                standalone_confidence_entries = conf_data.get("segments")
+            except (json.JSONDecodeError, KeyError):
+                pass
+
         export_clinical_note = getattr(args, "export_clinical_note", False)
         if export_clinical_note:
             norm_files = sorted(Path(config.output_dir).glob(
@@ -1705,9 +1751,15 @@ def main() -> None:
                     cn_roles = detect_speaker_roles(
                         cn_norm_segs, config.language,
                     )
+                from app.review_flags import generate_review_flags
+                review_flags = generate_review_flags(
+                    cn_norm_segs,
+                    confidence_entries=standalone_confidence_entries,
+                )
                 note_path = write_clinical_note(
                     cn_norm_segs, template, config.output_dir, ts, template_id,
                     speaker_roles=cn_roles,
+                    review_flags=review_flags,
                 )
                 print(f"Clinical note    : {note_path}")
             except FileNotFoundError as e:
@@ -1728,6 +1780,7 @@ def main() -> None:
                 note_paths = _export_multi_notes(
                     multi_template_ids, mn_norm_segs,
                     config.output_dir, ts, config.language,
+                    confidence_entries=standalone_confidence_entries,
                 )
                 for p in note_paths:
                     print(f"Clinical note    : {p}")

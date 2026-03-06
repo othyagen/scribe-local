@@ -64,6 +64,24 @@ def build_confidence_report(entries: list[dict]) -> dict:
     }
 
 
+def detect_low_confidence_segments(
+    entries: list[dict],
+    threshold: float = AVG_LOGPROB_THRESHOLD,
+) -> list[dict]:
+    """Return entries where avg_logprob < threshold.
+
+    Each returned dict has: seg_id, t0, t1, avg_logprob, no_speech_prob,
+    compression_ratio, flags (list of flag strings).
+    Entries with avg_logprob=None are excluded.
+    """
+    report = build_confidence_report(entries)
+    return [
+        seg for seg in report["segments"]
+        if seg.get("avg_logprob") is not None
+        and seg["avg_logprob"] < threshold
+    ]
+
+
 def write_confidence_report(
     report: dict, output_dir: str, timestamp: str
 ) -> Path:

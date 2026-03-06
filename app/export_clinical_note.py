@@ -209,6 +209,7 @@ def build_clinical_note(
     segments: list[dict],
     template: dict,
     speaker_roles: Optional[dict[str, dict]] = None,
+    review_flags: Optional[list[dict]] = None,
 ) -> str:
     """Build a clinical note string from normalized segments and a template.
 
@@ -218,6 +219,7 @@ def build_clinical_note(
         segments: list of normalized segment dicts
         template: parsed YAML template dict
         speaker_roles: optional {speaker_id: {role, confidence, evidence}}
+        review_flags: optional list of review flag dicts to append
     """
     fmt = template.get("format", "markdown")
     is_md = fmt == "markdown"
@@ -350,6 +352,24 @@ def build_clinical_note(
                 lines.append(f"  [{ts0} - {ts1}] [{label}] {text}")
         lines.append("")
 
+    # Review flags section (optional)
+    if template.get("show_review_flags", False) and review_flags:
+        if is_md:
+            lines.append("## Review Flags")
+        else:
+            lines.append("Review Flags")
+            lines.append("-" * len("Review Flags"))
+        lines.append("")
+        for flag in review_flags:
+            severity = flag.get("severity", "info")
+            message = flag.get("message", "")
+            prefix = severity.upper()
+            if is_md:
+                lines.append(f"- **{prefix}**: {message}")
+            else:
+                lines.append(f"  [{prefix}] {message}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -362,6 +382,7 @@ def write_clinical_note(
     session_ts: str,
     template_id: str,
     speaker_roles: Optional[dict[str, dict]] = None,
+    review_flags: Optional[list[dict]] = None,
 ) -> Path:
     """Write clinical note to ``clinical_note_<ts>_<template_id>.<ext>``.
 
@@ -370,7 +391,9 @@ def write_clinical_note(
     fmt = template.get("format", "markdown")
     ext = "md" if fmt == "markdown" else "txt"
 
-    content = build_clinical_note(segments, template, speaker_roles)
+    content = build_clinical_note(
+        segments, template, speaker_roles, review_flags,
+    )
     p = Path(output_dir) / f"clinical_note_{session_ts}_{template_id}.{ext}"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")

@@ -149,6 +149,60 @@ def _run_extractors_on_text(
     return items
 
 
+def _run_extractors_on_segments(
+    segments: list[dict],
+    extractor_names: list[str],
+    seen: set[str],
+) -> list[dict]:
+    """Run extractors per-segment, returning items with evidence metadata.
+
+    Each result dict has:
+      - ``item``: the extracted string
+      - ``evidence``: ``{segment_id, speaker_id, t_start}``
+
+    Deduplicates case-insensitively via *seen*; first occurrence wins.
+    Updates *seen* in-place.
+    """
+    results: list[dict] = []
+    for seg in segments:
+        text = seg.get("normalized_text", "")
+        if not text:
+            continue
+        evidence = {
+            "segment_id": seg.get("seg_id", ""),
+            "speaker_id": seg.get("speaker_id", ""),
+            "t_start": seg.get("t0", 0.0),
+        }
+        for ext_name in extractor_names:
+            try:
+                extractor = get_extractor(ext_name)
+            except KeyError:
+                continue
+            for item in extractor(text):
+                key = item.lower()
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"item": item, "evidence": evidence})
+    return results
+
+
+def _fmt_evidence(ev: dict) -> str:
+    """Format evidence as a compact bracket reference.
+
+    Returns e.g. ``[seg_0003, spk_1, 01:42]``.
+    Gracefully handles missing keys.
+    """
+    seg = ev.get("segment_id", "")
+    spk = ev.get("speaker_id", "")
+    t = ev.get("t_start")
+    parts = [p for p in (seg, spk) if p]
+    if t is not None:
+        parts.append(_fmt_ts(t))
+    if not parts:
+        return ""
+    return "[" + ", ".join(parts) + "]"
+
+
 # ── note building ─────────────────────────────────────────────────────
 
 def build_clinical_note(
@@ -167,6 +221,7 @@ def build_clinical_note(
     """
     fmt = template.get("format", "markdown")
     is_md = fmt == "markdown"
+    show_evidence = template.get("show_evidence", False)
 
     lines: list[str] = []
 
@@ -211,34 +266,56 @@ def build_clinical_note(
 
         # Run extractors with soft scoping:
         # First try scoped text; if too sparse, supplement with all segments.
-        scoped_text = " ".join(
-            seg.get("normalized_text", "") for seg in scoped_segments
-        ).strip()
-
         seen: set[str] = set()
-        all_items = _run_extractors_on_text(scoped_text, extractors, seen)
 
-        # Soft scoping: if scoped results are sparse and scope != "all",
-        # supplement with all-segment extraction (deduplicated).
-        if scope != "all" and len(all_items) < _SOFT_SCOPE_MIN_ITEMS:
-            full_text = " ".join(
-                seg.get("normalized_text", "") for seg in segments
-            ).strip()
-            all_items.extend(
-                _run_extractors_on_text(full_text, extractors, seen)
+        if show_evidence:
+            all_ev_items = _run_extractors_on_segments(
+                scoped_segments, extractors, seen,
             )
-
-        if all_items:
-            for item in all_items:
-                if is_md:
-                    lines.append(f"- {item}")
-                else:
-                    lines.append(f"  {item}")
-        else:
-            if is_md:
-                lines.append("_No items detected._")
+            if scope != "all" and len(all_ev_items) < _SOFT_SCOPE_MIN_ITEMS:
+                all_ev_items.extend(
+                    _run_extractors_on_segments(segments, extractors, seen)
+                )
+            if all_ev_items:
+                for entry in all_ev_items:
+                    ref = _fmt_evidence(entry.get("evidence", {}))
+                    suffix = f"  {ref}" if ref else ""
+                    if is_md:
+                        lines.append(f"- {entry['item']}{suffix}")
+                    else:
+                        lines.append(f"  {entry['item']}{suffix}")
             else:
-                lines.append("  (No items detected.)")
+                if is_md:
+                    lines.append("_No items detected._")
+                else:
+                    lines.append("  (No items detected.)")
+        else:
+            scoped_text = " ".join(
+                seg.get("normalized_text", "") for seg in scoped_segments
+            ).strip()
+            all_items = _run_extractors_on_text(scoped_text, extractors, seen)
+
+            # Soft scoping: if scoped results are sparse and scope != "all",
+            # supplement with all-segment extraction (deduplicated).
+            if scope != "all" and len(all_items) < _SOFT_SCOPE_MIN_ITEMS:
+                full_text = " ".join(
+                    seg.get("normalized_text", "") for seg in segments
+                ).strip()
+                all_items.extend(
+                    _run_extractors_on_text(full_text, extractors, seen)
+                )
+
+            if all_items:
+                for item in all_items:
+                    if is_md:
+                        lines.append(f"- {item}")
+                    else:
+                        lines.append(f"  {item}")
+            else:
+                if is_md:
+                    lines.append("_No items detected._")
+                else:
+                    lines.append("  (No items detected.)")
         lines.append("")
 
     # Transcript section (optional)

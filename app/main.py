@@ -856,6 +856,23 @@ def run(config: AppConfig, args: object = None) -> None:
             except FileNotFoundError as e:
                 print(f"[{_ts()}] Clinical note export failed: {e}")
 
+        # Multi-template clinical note export
+        clinical_note_paths: list[Path] = []
+        multi_template_ids = _parse_export_notes(args)
+        if multi_template_ids:
+            session_ts = writer.raw_json_path.stem[4:23]
+            try:
+                with open(writer.normalized_json_path, encoding="utf-8") as f:
+                    mn_norm_segs = json.load(f)
+                clinical_note_paths = _export_multi_notes(
+                    multi_template_ids, mn_norm_segs,
+                    config.output_dir, session_ts, config.language,
+                )
+                for p in clinical_note_paths:
+                    print(f"[{_ts()}] Clinical note: {p}")
+            except FileNotFoundError as e:
+                print(f"[{_ts()}] Clinical note export failed: {e}")
+
         # Confidence report
         confidence_report_path = None
         if confidence_entries:
@@ -894,6 +911,8 @@ def run(config: AppConfig, args: object = None) -> None:
             print(f"VTT subtitles      : {vtt_path}")
         if clinical_note_path:
             print(f"Clinical note      : {clinical_note_path}")
+        for cnp in clinical_note_paths:
+            print(f"Clinical note      : {cnp}")
 
         # Session report (consolidated summary)
         session_report_path = None
@@ -915,6 +934,7 @@ def run(config: AppConfig, args: object = None) -> None:
                 "srt": str(srt_path) if srt_path else None,
                 "vtt": str(vtt_path) if vtt_path else None,
                 "clinical_note": str(clinical_note_path) if clinical_note_path else None,
+                "clinical_notes": [str(p) for p in clinical_note_paths] if clinical_note_paths else None,
             }
             diar_stats = {
                 "turns_before_smoothing": turns_before_smoothing,
@@ -1023,6 +1043,54 @@ def _resolve_template_id(args: object) -> str:
     if alias is not None:
         return alias
     return getattr(args, "note_template", "soap")
+
+
+def _parse_export_notes(args: object) -> list[str]:
+    """Parse --export-notes CSV into deduplicated, ordered template IDs."""
+    raw = getattr(args, "export_notes", None)
+    if not raw:
+        return []
+    seen: set[str] = set()
+    result: list[str] = []
+    for part in raw.split(","):
+        tid = part.strip()
+        if tid and tid not in seen:
+            seen.add(tid)
+            result.append(tid)
+    return result
+
+
+def _export_multi_notes(
+    template_ids: list[str],
+    segments: list[dict],
+    output_dir: str,
+    session_ts: str,
+    language: str,
+) -> list[Path]:
+    """Generate clinical notes for multiple templates. Returns list of paths."""
+    from app.export_clinical_note import (
+        load_template, write_clinical_note, _template_needs_roles,
+    )
+
+    # Load all templates first (fail-fast on missing)
+    templates = []
+    for tid in template_ids:
+        templates.append((tid, load_template(tid)))
+
+    # Compute roles once if any template needs them
+    roles = None
+    if any(_template_needs_roles(t) for _, t in templates):
+        from app.role_detection import detect_speaker_roles
+        roles = detect_speaker_roles(segments, language)
+
+    paths: list[Path] = []
+    for tid, template in templates:
+        p = write_clinical_note(
+            segments, template, output_dir, session_ts, tid,
+            speaker_roles=roles,
+        )
+        paths.append(p)
+    return paths
 
 
 # ── reprocess existing session ────────────────────────────────────────
@@ -1194,6 +1262,21 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
         except FileNotFoundError as e:
             print(f"  Warning: clinical note export failed: {e}")
 
+    # Multi-template clinical note export
+    clinical_note_paths: list[Path] = []
+    multi_template_ids = _parse_export_notes(args)
+    if multi_template_ids:
+        try:
+            clinical_note_paths = _export_multi_notes(
+                multi_template_ids, normalized_list,
+                config.output_dir, session_ts, config.language,
+            )
+            for p in clinical_note_paths:
+                outputs_regenerated.append("clinical_note")
+                print(f"  Clinical note : {p}")
+        except FileNotFoundError as e:
+            print(f"  Warning: clinical note export failed: {e}")
+
     # 8. Session report
     if config.reporting.session_report_enabled:
         from app.reporting import build_session_report, write_session_report
@@ -1208,6 +1291,7 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
             "srt": str(srt_path) if srt_path else None,
             "vtt": str(vtt_path) if vtt_path else None,
             "clinical_note": str(clinical_note_path) if clinical_note_path else None,
+            "clinical_notes": [str(p) for p in clinical_note_paths] if clinical_note_paths else None,
         }
         sr = build_session_report(
             session_ts=session_ts,
@@ -1539,6 +1623,27 @@ def main() -> None:
                     speaker_roles=cn_roles,
                 )
                 print(f"Clinical note    : {note_path}")
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+
+        multi_template_ids = _parse_export_notes(args)
+        if multi_template_ids:
+            norm_files = sorted(Path(config.output_dir).glob(
+                f"normalized_{ts}*.json"
+            ))
+            if not norm_files:
+                print(f"Error: normalized segments not found for session {ts}")
+                sys.exit(1)
+            with open(norm_files[-1], encoding="utf-8") as f:
+                mn_norm_segs = json.load(f)
+            try:
+                note_paths = _export_multi_notes(
+                    multi_template_ids, mn_norm_segs,
+                    config.output_dir, ts, config.language,
+                )
+                for p in note_paths:
+                    print(f"Clinical note    : {p}")
             except FileNotFoundError as e:
                 print(f"Error: {e}")
                 sys.exit(1)

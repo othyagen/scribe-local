@@ -305,6 +305,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--template", type=str, default=None,
                     dest="template_alias",
                     help=argparse.SUPPRESS)  # backward-compat alias
+    p.add_argument("--export-notes", type=str, default=None,
+                    dest="export_notes",
+                    help="Export multiple clinical notes (comma-separated template IDs)")
+
 
     # Reprocess existing session
     p.add_argument("--reprocess", type=str, default=None,

@@ -979,31 +979,36 @@ def _print_session_list(sessions: list) -> None:
 
     # Header
     print(
-        f"{'Timestamp':<21} {'Duration':>8} {'Segs':>5} "
-        f"{'Model':<12} {'Lang':>4} {'Audio':>8} "
-        f"{'Diar':>4} {'Conf':>12} {'Resume':>6}"
+        f"{'TIMESTAMP':<21} {'DUR':>8} {'SEGS':>5} "
+        f"{'SPEAKERS':>8}  {'FILES'}"
     )
-    print("-" * 90)
+    print("-" * 70)
 
     for s in sessions:
         dur = _fmt_duration(s.duration_sec)
-        audio = f"{s.audio_parts_count} part" if s.audio_parts_count == 1 else (
-            f"{s.audio_parts_count} parts" if s.audio_parts_count > 0 else "NO"
-        )
-        diar = "YES" if s.has_diarization else "NO"
-        if s.has_confidence and s.confidence_flagged_count is not None:
-            conf = f"{s.confidence_flagged_count} flagged"
-        elif s.has_confidence:
-            conf = "YES"
-        else:
-            conf = "-"
-        resume = "YES" if s.resume_possible else "NO"
+        speakers = str(s.speaker_count) if s.speaker_count is not None else "-"
+        files_tokens = _build_files_tokens(s)
 
         print(
             f"{s.ts:<21} {dur:>8} {s.segment_count:>5} "
-            f"{s.model_tag:<12} {s.language:>4} {audio:>8} "
-            f"{diar:>4} {conf:>12} {resume:>6}"
+            f"{speakers:>8}  {','.join(files_tokens)}"
         )
+
+
+def _build_files_tokens(s) -> list[str]:
+    """Build abbreviated file-presence tokens for session list view."""
+    tokens = ["raw"]
+    if s.has_normalized:
+        tokens.append("norm")
+    if s.has_diarization:
+        tokens.append("diar")
+    if s.has_tags:
+        tokens.append("tags")
+    if s.has_confidence:
+        tokens.append("conf")
+    for tid in s.clinical_notes:
+        tokens.append(tid)
+    return tokens
 
 
 def _print_session_detail(info: dict) -> None:
@@ -1017,9 +1022,19 @@ def _print_session_detail(info: dict) -> None:
     print(f"  Audio         : {'YES' if info['has_audio'] else 'NO'} ({info['audio_parts_count']} parts)")
     print(f"  Normalized    : {'YES' if info['has_normalized'] else 'NO'}")
     print(f"  Diarization   : {'YES' if info['has_diarization'] else 'NO'}")
-    if info.get("speaker_count") is not None:
+    speaker_ids = info.get("speaker_ids", [])
+    if speaker_ids:
+        print(f"  Speakers      : {', '.join(speaker_ids)}")
+    elif info.get("speaker_count") is not None:
         print(f"  Speakers      : {info['speaker_count']}")
+    roles = info.get("speaker_roles")
+    if roles:
+        role_parts = [f"{r['role']}={spk}" for spk, r in roles.items()]
+        print(f"  Roles         : {', '.join(role_parts)}")
     print(f"  Speaker tags  : {'YES' if info['has_tags'] else 'NO'}")
+    clinical = info.get("clinical_notes", [])
+    if clinical:
+        print(f"  Clinical notes: {', '.join(clinical)}")
     if info['has_confidence']:
         flagged = info.get('confidence_flagged_count')
         total = info.get('confidence_total', '?')

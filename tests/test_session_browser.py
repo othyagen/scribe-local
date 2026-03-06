@@ -243,3 +243,101 @@ class TestBrowserCli:
         args = parser.parse_args([])
         assert args.list_sessions is False
         assert args.show_session is None
+
+
+# ── speaker count in scan ─────────────────────────────────────────────
+
+class TestSpeakerCountInScan:
+    def test_speaker_count_from_diarization(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        _write_diarization(tmp_path, ts)
+
+        sessions = scan_sessions(tmp_path)
+        assert sessions[0].speaker_count == 2
+
+    def test_speaker_count_none_without_diarization(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+
+        sessions = scan_sessions(tmp_path)
+        assert sessions[0].speaker_count is None
+
+
+# ── clinical notes detection ──────────────────────────────────────────
+
+class TestClinicalNotesDetection:
+    def test_clinical_notes_detected(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        (tmp_path / f"clinical_note_{ts}_soap.md").write_text("# SOAP", encoding="utf-8")
+        (tmp_path / f"clinical_note_{ts}_isbar.md").write_text("# ISBAR", encoding="utf-8")
+
+        sessions = scan_sessions(tmp_path)
+        assert "soap" in sessions[0].clinical_notes
+        assert "isbar" in sessions[0].clinical_notes
+
+    def test_clinical_notes_empty(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+
+        sessions = scan_sessions(tmp_path)
+        assert sessions[0].clinical_notes == []
+
+
+# ── show_session enrichments ──────────────────────────────────────────
+
+class TestShowSessionEnrichments:
+    def test_show_session_speaker_ids(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        _write_diarization(tmp_path, ts)
+
+        info = show_session(tmp_path, ts)
+        assert info["speaker_ids"] == ["spk_0", "spk_1"]
+
+    def test_show_session_speaker_ids_empty_without_diarization(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+
+        info = show_session(tmp_path, ts)
+        assert info["speaker_ids"] == []
+
+    def test_show_session_clinical_notes(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        (tmp_path / f"clinical_note_{ts}_soap.md").write_text("# SOAP", encoding="utf-8")
+
+        info = show_session(tmp_path, ts)
+        assert info["clinical_notes"] == ["soap"]
+        assert f"clinical_note_soap" in info["files"]
+
+    def test_show_session_speaker_roles(self, tmp_path, monkeypatch):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        _write_diarization(tmp_path, ts)
+        # Create normalized file
+        norm = [{"seg_id": "seg_0001", "text": "hello", "speaker_id": "spk_0"}]
+        (tmp_path / f"normalized_{ts}_large-v3.json").write_text(
+            json.dumps(norm), encoding="utf-8"
+        )
+
+        fake_roles = {
+            "spk_0": {"role": "clinician", "confidence": 0.8, "evidence": []},
+            "spk_1": {"role": "patient", "confidence": 0.7, "evidence": []},
+        }
+        monkeypatch.setattr(
+            "app.role_detection.detect_speaker_roles",
+            lambda segments, lang: fake_roles,
+        )
+
+        info = show_session(tmp_path, ts)
+        assert info["speaker_roles"] == fake_roles
+
+    def test_show_session_no_roles_without_normalized(self, tmp_path):
+        ts = "2026-01-01_12-00-00"
+        _write_raw(tmp_path, ts, [_seg_dict()])
+        _write_diarization(tmp_path, ts)
+
+        info = show_session(tmp_path, ts)
+        assert info["speaker_roles"] is None

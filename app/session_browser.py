@@ -26,6 +26,8 @@ class SessionInfo:
     has_confidence: bool
     confidence_flagged_count: Optional[int]
     resume_possible: bool
+    speaker_count: Optional[int] = None
+    clinical_notes: list[str] = field(default_factory=list)
     corrupt: bool = False
 
 
@@ -88,6 +90,8 @@ def show_session(output_dir: Path, ts: str) -> dict:
         "has_confidence": info.has_confidence,
         "confidence_flagged_count": info.confidence_flagged_count,
         "resume_possible": info.resume_possible,
+        "speaker_count": info.speaker_count,
+        "clinical_notes": info.clinical_notes,
     }
 
     # Enrich with file paths
@@ -119,19 +123,28 @@ def show_session(output_dir: Path, ts: str) -> dict:
     tagged_txt = output_dir / f"tag_labeled_{ts}.txt"
     if tagged_txt.exists():
         files["tag_labeled_txt"] = str(tagged_txt)
+    # Clinical note files
+    for note_path in sorted(output_dir.glob(f"clinical_note_{ts}_*.*")):
+        tid = _extract_template_id(note_path, ts)
+        if tid:
+            files[f"clinical_note_{tid}"] = str(note_path)
     result["files"] = files
 
-    # Speaker count from diarization
+    # Speaker IDs and count from diarization
+    speaker_ids: list[str] = []
     if info.has_diarization:
         try:
             with open(diar, encoding="utf-8") as f:
                 diar_data = json.load(f)
-            speakers = set(t["speaker"] for t in diar_data.get("turns", []))
-            result["speaker_count"] = len(speakers)
+            seen_order: list[str] = []
+            for t in diar_data.get("turns", []):
+                spk = t.get("speaker")
+                if spk and spk not in seen_order:
+                    seen_order.append(spk)
+            speaker_ids = seen_order
         except Exception:
-            result["speaker_count"] = None
-    else:
-        result["speaker_count"] = None
+            pass
+    result["speaker_ids"] = speaker_ids
 
     # Confidence thresholds
     if info.has_confidence:
@@ -143,6 +156,11 @@ def show_session(output_dir: Path, ts: str) -> dict:
         except Exception:
             pass
 
+    # Speaker roles (on-demand, best-effort)
+    result["speaker_roles"] = _detect_roles_safe(
+        output_dir, ts, info.has_normalized, info.has_diarization, info.language,
+    )
+
     # Resume reason
     if not info.resume_possible:
         result["resume_reason"] = "no audio file found"
@@ -153,6 +171,72 @@ def show_session(output_dir: Path, ts: str) -> dict:
 
 
 # ── internal helpers ─────────────────────────────────────────────────
+
+def _extract_template_id(note_path: Path, ts: str) -> str | None:
+    """Extract template ID from clinical_note_<ts>_<template>.<ext> filename.
+
+    Returns None if the filename doesn't match the expected pattern.
+    """
+    stem = note_path.stem  # clinical_note_<ts>_<template>
+    prefix = f"clinical_note_{ts}_"
+    if not stem.startswith(prefix):
+        return None
+    tid = stem[len(prefix):]
+    return tid if tid else None
+
+
+def _detect_roles_safe(
+    output_dir: Path,
+    ts: str,
+    has_normalized: bool,
+    has_diarization: bool,
+    language: str,
+) -> dict | None:
+    """Attempt speaker role detection from normalized segments.
+
+    Returns role dict or None on any failure. Never raises, never prints.
+    """
+    if not has_normalized or not has_diarization:
+        return None
+    try:
+        norm_files = sorted(output_dir.glob(f"normalized_{ts}_*.json"))
+        if not norm_files:
+            return None
+        with open(norm_files[-1], encoding="utf-8") as f:
+            segments = json.load(f)
+        if not segments:
+            return None
+        from app.role_detection import detect_speaker_roles
+        return detect_speaker_roles(segments, language)
+    except Exception:
+        return None
+
+
+def _speaker_count_from_diarization(
+    output_dir: Path, ts: str,
+) -> int | None:
+    """Read diarization JSON and return unique speaker count, or None."""
+    diar_path = output_dir / f"diarization_{ts}.json"
+    if not diar_path.exists():
+        return None
+    try:
+        with open(diar_path, encoding="utf-8") as f:
+            data = json.load(f)
+        speakers = set(t["speaker"] for t in data.get("turns", []))
+        return len(speakers) if speakers else None
+    except Exception:
+        return None
+
+
+def _detect_clinical_notes(output_dir: Path, ts: str) -> list[str]:
+    """Find clinical note files and return sorted template IDs."""
+    template_ids: list[str] = []
+    for p in sorted(output_dir.glob(f"clinical_note_{ts}_*.*")):
+        tid = _extract_template_id(p, ts)
+        if tid and tid not in template_ids:
+            template_ids.append(tid)
+    return template_ids
+
 
 def _parse_raw_file(
     raw_path: Path,
@@ -222,6 +306,9 @@ def _parse_raw_file(
         except Exception:
             pass
 
+    speaker_count = _speaker_count_from_diarization(output_dir, ts)
+    clinical_notes = _detect_clinical_notes(output_dir, ts)
+
     return SessionInfo(
         ts=ts,
         raw_path=raw_path,
@@ -237,4 +324,6 @@ def _parse_raw_file(
         has_confidence=has_confidence,
         confidence_flagged_count=confidence_flagged,
         resume_possible=has_audio,
+        speaker_count=speaker_count,
+        clinical_notes=clinical_notes,
     )

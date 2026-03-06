@@ -1477,6 +1477,14 @@ def main() -> None:
 
     config = apply_cli_overrides(config, args)
 
+    # --validate-config: check config and resources, then exit
+    if getattr(args, "validate_config", False):
+        from app.config_validation import validate_config, format_validation_report
+        issues = validate_config(config)
+        print(format_validation_report(issues, config))
+        errors = [i for i in issues if i["level"] == "error"]
+        sys.exit(1 if errors else 0)
+
     # Validate language
     if config.language not in ("da", "sv", "en"):
         print(f"Error: unsupported language '{config.language}'. Use da, sv, or en.")

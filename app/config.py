@@ -317,6 +317,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--reprocess-all", action="store_true", default=False,
                     help="Reprocess all sessions (re-normalize, re-export) and exit")
 
+    # Configuration validation
+    p.add_argument("--validate-config", action="store_true", default=False,
+                    help="Validate configuration and resource files, then exit")
+
     # Lexicon management
     p.add_argument("--add-term", type=str, default=None,
                     metavar="FROM=TO",

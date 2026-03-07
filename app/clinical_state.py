@@ -22,6 +22,9 @@ from app.extractors import (
 from app.symptom_timeline import extract_symptom_timeline
 from app.review_flags import generate_review_flags
 from app.diagnostic_hints import generate_diagnostic_hints
+from app.history_extraction import extract_history_context
+from app.qualifier_extraction import extract_qualifiers
+from app.problem_representation import build_problem_representation
 
 
 def build_clinical_state(
@@ -42,7 +45,7 @@ def build_clinical_state(
     Returns:
         dict with keys: ``symptoms``, ``durations``, ``negations``,
         ``medications``, ``timeline``, ``review_flags``,
-        ``diagnostic_hints``, ``speaker_roles``.
+        ``diagnostic_hints``, ``speaker_roles``, ``history``.
     """
     full_text = " ".join(
         seg.get("normalized_text", "") for seg in segments
@@ -61,7 +64,11 @@ def build_clinical_state(
 
     diagnostic_hints = generate_diagnostic_hints(symptoms, negations)
 
-    return {
+    history = extract_history_context(segments)
+
+    qualifiers = extract_qualifiers(segments, extracted_findings=symptoms)
+
+    state = {
         "symptoms": symptoms,
         "durations": durations,
         "negations": negations,
@@ -70,4 +77,14 @@ def build_clinical_state(
         "review_flags": review_flags,
         "diagnostic_hints": diagnostic_hints,
         "speaker_roles": speaker_roles,
+        "history": history,
+        "qualifiers": qualifiers,
     }
+
+    pr = build_problem_representation(state)
+    state["derived"] = {
+        "problem_representation": pr,
+        "problem_focus": pr.get("core_symptom"),
+    }
+
+    return state

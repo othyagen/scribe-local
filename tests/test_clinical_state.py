@@ -27,6 +27,9 @@ _EXPECTED_KEYS = {
     "review_flags",
     "diagnostic_hints",
     "speaker_roles",
+    "history",
+    "qualifiers",
+    "derived",
 }
 
 
@@ -38,10 +41,16 @@ class TestStructure:
         state = build_clinical_state([_seg("hello.")])
         assert set(state.keys()) == _EXPECTED_KEYS
 
-    def test_all_values_are_lists_except_roles(self):
+    def test_all_values_are_lists_except_roles_history_derived(self):
         state = build_clinical_state([_seg("hello.")])
-        for key in _EXPECTED_KEYS - {"speaker_roles"}:
+        for key in _EXPECTED_KEYS - {"speaker_roles", "history", "derived"}:
             assert isinstance(state[key], list), f"{key} should be a list"
+        assert isinstance(state["history"], dict)
+        assert isinstance(state["derived"], dict)
+
+    def test_qualifiers_is_list(self):
+        state = build_clinical_state([_seg("hello.")])
+        assert isinstance(state["qualifiers"], list)
 
     def test_empty_segments(self):
         state = build_clinical_state([])

@@ -28,6 +28,7 @@ from app.problem_representation import (
     build_problem_representation,
     build_symptom_representations,
 )
+from app.problem_summary import summarize_problem
 
 
 def build_clinical_state(
@@ -91,5 +92,6 @@ def build_clinical_state(
         "problem_focus": pr.get("core_symptom"),
         "symptom_representations": symptom_reps,
     }
+    state["derived"]["problem_summary"] = summarize_problem(state)
 
     return state

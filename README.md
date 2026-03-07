@@ -884,6 +884,51 @@ Returned structure:
 
 The `derived` key is compatible with the AI overlay — `apply_ai_overlay()` uses `setdefault("derived", {})` so it merges into the existing dict without overwriting the problem representation.
 
+### Symptom Representations
+
+`build_symptom_representations()` produces one representation per symptom with only the qualifiers that were actually detected for *that* symptom. Qualifiers are never inherited across symptoms — this prevents summaries that incorrectly imply associated symptoms share the core symptom's duration, severity, or other attributes.
+
+```python
+from app.problem_representation import build_symptom_representations
+
+reps = build_symptom_representations(clinical_state)
+```
+
+Automatically computed by `build_clinical_state()` and stored under `state["derived"]["symptom_representations"]`.
+
+Returned structure (one entry per symptom, preserving order):
+
+```python
+[
+    {
+        "symptom": "headache",
+        "severity": "severe",           # from qualifiers for THIS symptom only
+        "duration": "3 days",           # from timeline for THIS symptom only
+        "onset": "sudden",
+        "pattern": "constant",
+        "progression": "worsening",
+        "laterality": "left",
+        "radiation": "to left arm",
+        "aggravating_factors": ["movement"],
+        "relieving_factors": ["rest"],
+    },
+    {
+        "symptom": "nausea",
+        "severity": "mild",            # nausea's own qualifier, not inherited from headache
+        "duration": None,              # no timeline entry for nausea
+        "onset": None,
+        "pattern": "intermittent",
+        "progression": None,
+        "laterality": None,
+        "radiation": None,
+        "aggravating_factors": ["eating"],
+        "relieving_factors": [],
+    },
+]
+```
+
+**Key design rule:** No qualifier fallback across symptoms. If a symptom has no detected qualifiers, its fields are `None` / empty lists — never populated from another symptom's data. This ensures any future `problem_summary` string can safely describe the core symptom's attributes without leaking them to associated symptoms.
+
 ### Session Export Bundle
 
 Export all artifacts from a session into a single directory or ZIP archive for sharing, auditing, or archiving.
@@ -1066,7 +1111,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-1010 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O, low-confidence segment filtering), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), symptom timeline (numeric/relative time extraction, deduplication, missing fields, clinical note rendering), diagnostic hints (rule matching, negation suppression, multiple rules, SNOMED codes, evidence sorting, clinical note rendering), clinical state (structure validation, extractor assembly, timeline inclusion, review flag forwarding, hint generation, role passthrough, derived problem representation, integration scenario), problem representation (core symptom selection, timeline-based ordering, qualifier population, duration fallback, associated symptoms, factor collection with core-first/fallback dedup, negatives passthrough, diagnostic hint names, determinism, AI overlay compatibility), review flags (medication/symptom/confidence rules, evidence linking, clinical note rendering), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), confidence surfacing (low-confidence filtering, custom thresholds, review flag pipeline integration), session export bundle (directory/ZIP creation, file discovery, simplified renaming, missing file handling, content preservation), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), config validation (schema checks, unknown keys, type mismatches, nested validation), and end-to-end integration (full pipeline without live microphone).
+1031 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O, low-confidence segment filtering), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), symptom timeline (numeric/relative time extraction, deduplication, missing fields, clinical note rendering), diagnostic hints (rule matching, negation suppression, multiple rules, SNOMED codes, evidence sorting, clinical note rendering), clinical state (structure validation, extractor assembly, timeline inclusion, review flag forwarding, hint generation, role passthrough, derived problem representation, integration scenario), problem representation (core symptom selection, timeline-based ordering, qualifier population, duration fallback, associated symptoms, factor collection with core-first/fallback dedup, negatives passthrough, diagnostic hint names, determinism, AI overlay compatibility), symptom representations (per-symptom structure, qualifier isolation, no cross-symptom inheritance, per-symptom duration, per-symptom factors without fallback, case-insensitive matching, determinism, clinical state integration, AI overlay preservation), review flags (medication/symptom/confidence rules, evidence linking, clinical note rendering), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), confidence surfacing (low-confidence filtering, custom thresholds, review flag pipeline integration), session export bundle (directory/ZIP creation, file discovery, simplified renaming, missing file handling, content preservation), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), config validation (schema checks, unknown keys, type mismatches, nested validation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

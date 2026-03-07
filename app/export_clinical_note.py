@@ -210,6 +210,7 @@ def build_clinical_note(
     template: dict,
     speaker_roles: Optional[dict[str, dict]] = None,
     review_flags: Optional[list[dict]] = None,
+    symptom_timeline: Optional[list[dict]] = None,
 ) -> str:
     """Build a clinical note string from normalized segments and a template.
 
@@ -220,6 +221,7 @@ def build_clinical_note(
         template: parsed YAML template dict
         speaker_roles: optional {speaker_id: {role, confidence, evidence}}
         review_flags: optional list of review flag dicts to append
+        symptom_timeline: optional list of symptom–time dicts
     """
     fmt = template.get("format", "markdown")
     is_md = fmt == "markdown"
@@ -370,6 +372,27 @@ def build_clinical_note(
                 lines.append(f"  [{prefix}] {message}")
         lines.append("")
 
+    # Symptom timeline section (optional)
+    if template.get("show_symptom_timeline", False) and symptom_timeline:
+        if is_md:
+            lines.append("## Symptom Timeline")
+        else:
+            lines.append("Symptom Timeline")
+            lines.append("-" * len("Symptom Timeline"))
+        lines.append("")
+        for entry in symptom_timeline:
+            symptom = entry.get("symptom", "")
+            time_expr = entry.get("time_expression")
+            if time_expr:
+                bullet = f"{symptom} \u2014 {time_expr}"
+            else:
+                bullet = symptom
+            if is_md:
+                lines.append(f"- {bullet}")
+            else:
+                lines.append(f"  {bullet}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -383,6 +406,7 @@ def write_clinical_note(
     template_id: str,
     speaker_roles: Optional[dict[str, dict]] = None,
     review_flags: Optional[list[dict]] = None,
+    symptom_timeline: Optional[list[dict]] = None,
 ) -> Path:
     """Write clinical note to ``clinical_note_<ts>_<template_id>.<ext>``.
 
@@ -393,6 +417,7 @@ def write_clinical_note(
 
     content = build_clinical_note(
         segments, template, speaker_roles, review_flags,
+        symptom_timeline=symptom_timeline,
     )
     p = Path(output_dir) / f"clinical_note_{session_ts}_{template_id}.{ext}"
     p.parent.mkdir(parents=True, exist_ok=True)

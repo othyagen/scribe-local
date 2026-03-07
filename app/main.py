@@ -857,10 +857,13 @@ def run(config: AppConfig, args: object = None) -> None:
                     cn_norm_segs,
                     confidence_entries=confidence_entries or None,
                 )
+                from app.symptom_timeline import extract_symptom_timeline
+                symptom_timeline = extract_symptom_timeline(cn_norm_segs)
                 clinical_note_path = write_clinical_note(
                     cn_norm_segs, template, config.output_dir,
                     session_ts, template_id, speaker_roles=cn_roles,
                     review_flags=review_flags,
+                    symptom_timeline=symptom_timeline,
                 )
                 print(f"[{_ts()}] Clinical note: {clinical_note_path}")
             except FileNotFoundError as e:
@@ -874,10 +877,13 @@ def run(config: AppConfig, args: object = None) -> None:
             try:
                 with open(writer.normalized_json_path, encoding="utf-8") as f:
                     mn_norm_segs = json.load(f)
+                from app.symptom_timeline import extract_symptom_timeline
+                mn_timeline = extract_symptom_timeline(mn_norm_segs)
                 clinical_note_paths = _export_multi_notes(
                     multi_template_ids, mn_norm_segs,
                     config.output_dir, session_ts, config.language,
                     confidence_entries=confidence_entries or None,
+                    symptom_timeline=mn_timeline,
                 )
                 for p in clinical_note_paths:
                     print(f"[{_ts()}] Clinical note: {p}")
@@ -1093,6 +1099,7 @@ def _export_multi_notes(
     session_ts: str,
     language: str,
     confidence_entries: list[dict] | None = None,
+    symptom_timeline: list[dict] | None = None,
 ) -> list[Path]:
     """Generate clinical notes for multiple templates. Returns list of paths."""
     from app.export_clinical_note import (
@@ -1116,12 +1123,18 @@ def _export_multi_notes(
         segments, confidence_entries=confidence_entries,
     )
 
+    # Compute symptom timeline once if not provided
+    if symptom_timeline is None:
+        from app.symptom_timeline import extract_symptom_timeline
+        symptom_timeline = extract_symptom_timeline(segments)
+
     paths: list[Path] = []
     for tid, template in templates:
         p = write_clinical_note(
             segments, template, output_dir, session_ts, tid,
             speaker_roles=roles,
             review_flags=review_flags,
+            symptom_timeline=symptom_timeline,
         )
         paths.append(p)
     return paths
@@ -1304,10 +1317,13 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
                 normalized_list,
                 confidence_entries=reprocess_confidence_entries,
             )
+            from app.symptom_timeline import extract_symptom_timeline
+            reprocess_timeline = extract_symptom_timeline(normalized_list)
             clinical_note_path = write_clinical_note(
                 normalized_list, template, config.output_dir,
                 session_ts, template_id, speaker_roles=cn_roles,
                 review_flags=review_flags,
+                symptom_timeline=reprocess_timeline,
             )
             outputs_regenerated.append("clinical_note")
             print(f"  Clinical note : {clinical_note_path}")
@@ -1319,10 +1335,13 @@ def _reprocess_session(config: AppConfig, args: object, session_ts: str) -> None
     multi_template_ids = _parse_export_notes(args)
     if multi_template_ids:
         try:
+            from app.symptom_timeline import extract_symptom_timeline
+            reprocess_multi_timeline = extract_symptom_timeline(normalized_list)
             clinical_note_paths = _export_multi_notes(
                 multi_template_ids, normalized_list,
                 config.output_dir, session_ts, config.language,
                 confidence_entries=reprocess_confidence_entries,
+                symptom_timeline=reprocess_multi_timeline,
             )
             for p in clinical_note_paths:
                 outputs_regenerated.append("clinical_note")
@@ -1570,6 +1589,23 @@ def main() -> None:
 
         sys.exit(0)
 
+    # --export-session: bundle export and exit
+    export_session_ts = getattr(args, "export_session", None)
+    if export_session_ts:
+        from app.export_bundle import export_session_bundle
+        zip_bundle = getattr(args, "zip_bundle", False)
+        try:
+            result_path = export_session_bundle(
+                export_session_ts,
+                Path(config.output_dir),
+                zip_output=zip_bundle,
+            )
+            print(f"Session bundle: {result_path}")
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        sys.exit(0)
+
     # --reprocess-all: batch reprocess all sessions and exit
     if getattr(args, "reprocess_all", False):
         _reprocess_all(config, args)
@@ -1756,10 +1792,13 @@ def main() -> None:
                     cn_norm_segs,
                     confidence_entries=standalone_confidence_entries,
                 )
+                from app.symptom_timeline import extract_symptom_timeline
+                standalone_timeline = extract_symptom_timeline(cn_norm_segs)
                 note_path = write_clinical_note(
                     cn_norm_segs, template, config.output_dir, ts, template_id,
                     speaker_roles=cn_roles,
                     review_flags=review_flags,
+                    symptom_timeline=standalone_timeline,
                 )
                 print(f"Clinical note    : {note_path}")
             except FileNotFoundError as e:
@@ -1777,10 +1816,13 @@ def main() -> None:
             with open(norm_files[-1], encoding="utf-8") as f:
                 mn_norm_segs = json.load(f)
             try:
+                from app.symptom_timeline import extract_symptom_timeline
+                standalone_multi_timeline = extract_symptom_timeline(mn_norm_segs)
                 note_paths = _export_multi_notes(
                     multi_template_ids, mn_norm_segs,
                     config.output_dir, ts, config.language,
                     confidence_entries=standalone_confidence_entries,
+                    symptom_timeline=standalone_multi_timeline,
                 )
                 for p in note_paths:
                     print(f"Clinical note    : {p}")

@@ -310,6 +310,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Export multiple clinical notes (comma-separated template IDs)")
 
 
+    # Session bundle export
+    p.add_argument("--export-session", type=str, default=None,
+                    metavar="TIMESTAMP", dest="export_session",
+                    help="Export all session artifacts into a bundle directory")
+    p.add_argument("--zip", action="store_true", default=False,
+                    dest="zip_bundle",
+                    help="Create ZIP archive instead of directory (use with --export-session)")
+
     # Reprocess existing session
     p.add_argument("--reprocess", type=str, default=None,
                     metavar="TIMESTAMP",

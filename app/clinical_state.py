@@ -30,6 +30,7 @@ from app.problem_representation import (
 )
 from app.problem_summary import summarize_problem
 from app.ontology_mapper import map_symptoms_to_concepts
+from app.pattern_matcher import match_clinical_patterns
 
 
 def build_clinical_state(
@@ -95,5 +96,6 @@ def build_clinical_state(
     }
     state["derived"]["problem_summary"] = summarize_problem(state)
     state["derived"]["ontology_concepts"] = map_symptoms_to_concepts(state)
+    state["derived"]["clinical_patterns"] = match_clinical_patterns(state)
 
     return state

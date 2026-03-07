@@ -29,6 +29,7 @@ from app.problem_representation import (
     build_symptom_representations,
 )
 from app.problem_summary import summarize_problem
+from app.ontology_mapper import map_symptoms_to_concepts
 
 
 def build_clinical_state(
@@ -93,5 +94,6 @@ def build_clinical_state(
         "symptom_representations": symptom_reps,
     }
     state["derived"]["problem_summary"] = summarize_problem(state)
+    state["derived"]["ontology_concepts"] = map_symptoms_to_concepts(state)
 
     return state

@@ -1,0 +1,152 @@
+{
+    "anxiety": {
+        "system": "SNOMED",
+        "code": "48694002",
+        "display": "Anxiety",
+        "type": "symptom"
+    },
+    "bleeding": {
+        "system": "SNOMED",
+        "code": "131148009",
+        "display": "Bleeding",
+        "type": "symptom"
+    },
+    "chest pain": {
+        "system": "SNOMED",
+        "code": "29857009",
+        "display": "Chest pain",
+        "type": "symptom"
+    },
+    "chills": {
+        "system": "SNOMED",
+        "code": "43724002",
+        "display": "Chills",
+        "type": "symptom"
+    },
+    "congestion": {
+        "system": "SNOMED",
+        "code": "68235000",
+        "display": "Nasal congestion",
+        "type": "symptom"
+    },
+    "cough": {
+        "system": "SNOMED",
+        "code": "49727002",
+        "display": "Cough",
+        "type": "symptom"
+    },
+    "cramps": {
+        "system": "SNOMED",
+        "code": "55300003",
+        "display": "Cramp",
+        "type": "symptom"
+    },
+    "diarrhea": {
+        "system": "SNOMED",
+        "code": "62315008",
+        "display": "Diarrhea",
+        "type": "symptom"
+    },
+    "dizziness": {
+        "system": "SNOMED",
+        "code": "404640003",
+        "display": "Dizziness",
+        "type": "symptom"
+    },
+    "fatigue": {
+        "system": "SNOMED",
+        "code": "84229001",
+        "display": "Fatigue",
+        "type": "symptom"
+    },
+    "fever": {
+        "system": "SNOMED",
+        "code": "386661006",
+        "display": "Fever",
+        "type": "symptom"
+    },
+    "headache": {
+        "system": "SNOMED",
+        "code": "25064002",
+        "display": "Headache",
+        "type": "symptom"
+    },
+    "insomnia": {
+        "system": "SNOMED",
+        "code": "193462001",
+        "display": "Insomnia",
+        "type": "symptom"
+    },
+    "nausea": {
+        "system": "SNOMED",
+        "code": "422587007",
+        "display": "Nausea",
+        "type": "symptom"
+    },
+    "numbness": {
+        "system": "SNOMED",
+        "code": "44077006",
+        "display": "Numbness",
+        "type": "symptom"
+    },
+    "pain": {
+        "system": "SNOMED",
+        "code": "22253000",
+        "display": "Pain",
+        "type": "symptom"
+    },
+    "palpitations": {
+        "system": "SNOMED",
+        "code": "80313002",
+        "display": "Palpitations",
+        "type": "symptom"
+    },
+    "rash": {
+        "system": "SNOMED",
+        "code": "271807003",
+        "display": "Rash",
+        "type": "symptom"
+    },
+    "shortness of breath": {
+        "system": "SNOMED",
+        "code": "267036007",
+        "display": "Shortness of breath",
+        "type": "symptom"
+    },
+    "sore throat": {
+        "system": "SNOMED",
+        "code": "162397003",
+        "display": "Sore throat",
+        "type": "symptom"
+    },
+    "stiffness": {
+        "system": "SNOMED",
+        "code": "271587009",
+        "display": "Stiffness",
+        "type": "symptom"
+    },
+    "swelling": {
+        "system": "SNOMED",
+        "code": "442672001",
+        "display": "Swelling",
+        "type": "symptom"
+    },
+    "tingling": {
+        "system": "SNOMED",
+        "code": "62507009",
+        "display": "Tingling",
+        "type": "symptom"
+    },
+    "vomiting": {
+        "system": "SNOMED",
+        "code": "422400008",
+        "display": "Vomiting",
+        "type": "symptom"
+    },
+    "weakness": {
+        "system": "SNOMED",
+        "code": "13791008",
+        "display": "Weakness",
+        "type": "symptom"
+    }
+}

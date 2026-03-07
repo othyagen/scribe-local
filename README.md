@@ -193,6 +193,7 @@ Each layer has a single responsibility:
 | `clinical_state.py` | Structured clinical state assembly from all extraction modules |
 | `problem_representation.py` | Deterministic structured problem representation from clinical state |
 | `problem_summary.py` | Deterministic human-readable problem summary from core symptom |
+| `ontology_mapper.py` | Lightweight file-based symptom-to-SNOMED concept mapping |
 | `export_bundle.py` | Session artifact bundling (directory or ZIP export) |
 | `role_detection.py` | Deterministic speaker role classification (clinician/patient) |
 | `main.py` | Pipeline orchestration |
@@ -965,6 +966,59 @@ Example output:
 
 Returns an empty string if there is no core symptom. This is a read-only layer — it never replaces or modifies `symptoms`, `qualifiers`, `symptom_representations`, or `problem_representation`.
 
+### Ontology Mapper
+
+`map_symptoms_to_concepts()` maps extracted symptoms to standardised clinical concept entries using a curated file-based mapping. Currently maps to SNOMED CT codes. No ML, no LLM, no external API calls — exact case-insensitive lookup only.
+
+```python
+from app.ontology_mapper import load_ontology_map, map_symptoms_to_concepts
+
+ontology = load_ontology_map()  # loads shipped symptoms_snomed.json
+concepts = map_symptoms_to_concepts(clinical_state, ontology)
+```
+
+Automatically computed by `build_clinical_state()` and stored under `state["derived"]["ontology_concepts"]`.
+
+Returned structure (one entry per mapped symptom, preserving order):
+
+```python
+[
+    {
+        "text": "headache",          # original symptom text
+        "system": "SNOMED",          # coding system
+        "code": "25064002",          # concept code
+        "display": "Headache",       # standard display name
+        "type": "symptom"            # concept type
+    },
+    {
+        "text": "nausea",
+        "system": "SNOMED",
+        "code": "422587007",
+        "display": "Nausea",
+        "type": "symptom"
+    }
+]
+```
+
+The shipped mapping (`resources/ontology/symptoms_snomed.json`) covers all 25 symptoms in the extractor vocabulary. Unknown symptoms are silently skipped (no fuzzy matching). Duplicate concepts (same code) are not repeated.
+
+Currently maps symptoms only. Medications, procedures, and diagnoses are not yet mapped.
+
+The mapping file can be extended by editing the JSON directly:
+
+```json
+{
+    "headache": {
+        "system": "SNOMED",
+        "code": "25064002",
+        "display": "Headache",
+        "type": "symptom"
+    }
+}
+```
+
+If the mapping file is missing or contains invalid JSON, an empty map is used and a warning is printed to stderr.
+
 ### Session Export Bundle
 
 Export all artifacts from a session into a single directory or ZIP archive for sharing, auditing, or archiving.
@@ -1147,7 +1201,7 @@ output_dir: outputs
 python -m pytest tests/ -v
 ```
 
-1061 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O, low-confidence segment filtering), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), symptom timeline (numeric/relative time extraction, deduplication, missing fields, clinical note rendering), diagnostic hints (rule matching, negation suppression, multiple rules, SNOMED codes, evidence sorting, clinical note rendering), clinical state (structure validation, extractor assembly, timeline inclusion, review flag forwarding, hint generation, role passthrough, derived problem representation, integration scenario), problem representation (core symptom selection, timeline-based ordering, qualifier population, duration fallback, associated symptoms, factor collection with core-first/fallback dedup, negatives passthrough, diagnostic hint names, determinism, AI overlay compatibility), symptom representations (per-symptom structure, qualifier isolation, no cross-symptom inheritance, per-symptom duration, per-symptom factors without fallback, case-insensitive matching, determinism, clinical state integration, AI overlay preservation), problem summary (single symptom fields, severity/duration/onset/pattern/progression/laterality/radiation, aggravating/relieving factors, field ordering, multiple symptoms with qualifier isolation, no cross-symptom attribute merging, missing core, determinism, capitalization, clinical state integration, structured data preservation, AI overlay compatibility), review flags (medication/symptom/confidence rules, evidence linking, clinical note rendering), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), confidence surfacing (low-confidence filtering, custom thresholds, review flag pipeline integration), session export bundle (directory/ZIP creation, file discovery, simplified renaming, missing file handling, content preservation), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), config validation (schema checks, unknown keys, type mismatches, nested validation), and end-to-end integration (full pipeline without live microphone).
+1082 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O, low-confidence segment filtering), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), symptom timeline (numeric/relative time extraction, deduplication, missing fields, clinical note rendering), diagnostic hints (rule matching, negation suppression, multiple rules, SNOMED codes, evidence sorting, clinical note rendering), clinical state (structure validation, extractor assembly, timeline inclusion, review flag forwarding, hint generation, role passthrough, derived problem representation, integration scenario), problem representation (core symptom selection, timeline-based ordering, qualifier population, duration fallback, associated symptoms, factor collection with core-first/fallback dedup, negatives passthrough, diagnostic hint names, determinism, AI overlay compatibility), symptom representations (per-symptom structure, qualifier isolation, no cross-symptom inheritance, per-symptom duration, per-symptom factors without fallback, case-insensitive matching, determinism, clinical state integration, AI overlay preservation), problem summary (single symptom fields, severity/duration/onset/pattern/progression/laterality/radiation, aggravating/relieving factors, field ordering, multiple symptoms with qualifier isolation, no cross-symptom attribute merging, missing core, determinism, capitalization, clinical state integration, structured data preservation, AI overlay compatibility), ontology mapper (file loading, default/custom/missing/invalid files, key lowercasing, shipped file coverage, symptom mapping, order preservation, case insensitivity, unknown symptom skip, duplicate dedup, empty inputs, default map auto-load, determinism, clinical state integration, AI overlay compatibility), review flags (medication/symptom/confidence rules, evidence linking, clinical note rendering), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), confidence surfacing (low-confidence filtering, custom thresholds, review flag pipeline integration), session export bundle (directory/ZIP creation, file discovery, simplified renaming, missing file handling, content preservation), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), config validation (schema checks, unknown keys, type mismatches, nested validation), and end-to-end integration (full pipeline without live microphone).
 
 ---
 

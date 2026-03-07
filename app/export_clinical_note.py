@@ -211,6 +211,7 @@ def build_clinical_note(
     speaker_roles: Optional[dict[str, dict]] = None,
     review_flags: Optional[list[dict]] = None,
     symptom_timeline: Optional[list[dict]] = None,
+    diagnostic_hints: Optional[list[dict]] = None,
 ) -> str:
     """Build a clinical note string from normalized segments and a template.
 
@@ -222,6 +223,7 @@ def build_clinical_note(
         speaker_roles: optional {speaker_id: {role, confidence, evidence}}
         review_flags: optional list of review flag dicts to append
         symptom_timeline: optional list of symptom–time dicts
+        diagnostic_hints: optional list of diagnostic hint dicts
     """
     fmt = template.get("format", "markdown")
     is_md = fmt == "markdown"
@@ -393,6 +395,26 @@ def build_clinical_note(
                 lines.append(f"  {bullet}")
         lines.append("")
 
+    # Diagnostic hints section (optional)
+    if template.get("show_diagnostic_hints", False) and diagnostic_hints:
+        if is_md:
+            lines.append("## Diagnostic Hints")
+        else:
+            lines.append("Diagnostic Hints")
+            lines.append("-" * len("Diagnostic Hints"))
+        lines.append("")
+        for hint in diagnostic_hints:
+            condition = hint.get("condition", "")
+            snomed = hint.get("snomed_code", "")
+            evidence = hint.get("evidence", [])
+            if is_md:
+                lines.append(f"- {condition} (SNOMED: {snomed})")
+                lines.append(f"  Evidence: {', '.join(evidence)}")
+            else:
+                lines.append(f"  {condition} (SNOMED: {snomed})")
+                lines.append(f"    Evidence: {', '.join(evidence)}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -407,6 +429,7 @@ def write_clinical_note(
     speaker_roles: Optional[dict[str, dict]] = None,
     review_flags: Optional[list[dict]] = None,
     symptom_timeline: Optional[list[dict]] = None,
+    diagnostic_hints: Optional[list[dict]] = None,
 ) -> Path:
     """Write clinical note to ``clinical_note_<ts>_<template_id>.<ext>``.
 
@@ -418,6 +441,7 @@ def write_clinical_note(
     content = build_clinical_note(
         segments, template, speaker_roles, review_flags,
         symptom_timeline=symptom_timeline,
+        diagnostic_hints=diagnostic_hints,
     )
     p = Path(output_dir) / f"clinical_note_{session_ts}_{template_id}.{ext}"
     p.parent.mkdir(parents=True, exist_ok=True)

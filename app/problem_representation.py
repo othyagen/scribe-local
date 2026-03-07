@@ -2,8 +2,12 @@
 
 Reads the assembled clinical_state and produces a formal problem
 representation dict that identifies the primary clinical problem and
-organises its attributes.  Pure function — no extraction logic, no
+organises its attributes.  Pure functions — no extraction logic, no
 side effects, no I/O.
+
+``build_symptom_representations`` produces per-symptom representations
+so that qualifiers remain linked to their correct symptom and are never
+incorrectly inherited across symptoms.
 """
 
 from __future__ import annotations
@@ -68,6 +72,62 @@ def build_problem_representation(clinical_state: dict) -> dict:
         "timeline": list(timeline),
         "diagnostic_hints": [h["condition"] for h in diagnostic_hints],
     }
+
+
+def build_symptom_representations(clinical_state: dict) -> list[dict]:
+    """Build per-symptom representations preserving qualifier–symptom links.
+
+    Each symptom gets its own representation with only the qualifiers
+    that were actually detected for *that* symptom.  No qualifier
+    inheritance across symptoms.
+
+    Args:
+        clinical_state: dict produced by :func:`build_clinical_state`.
+
+    Returns:
+        list of dicts, one per symptom, preserving symptom list order.
+        Each dict has keys: ``symptom``, ``severity``, ``duration``,
+        ``onset``, ``pattern``, ``progression``, ``laterality``,
+        ``radiation``, ``aggravating_factors``, ``relieving_factors``.
+    """
+    symptoms: list[str] = clinical_state.get("symptoms", [])
+    qualifiers: list[dict] = clinical_state.get("qualifiers", [])
+    timeline: list[dict] = clinical_state.get("timeline", [])
+
+    # Index qualifiers by symptom (case-insensitive)
+    qual_index: dict[str, dict] = {}
+    for entry in qualifiers:
+        key = entry.get("symptom", "").lower()
+        if key and key not in qual_index:
+            qual_index[key] = entry.get("qualifiers", {})
+
+    # Index timeline time_expression by symptom (first match)
+    time_index: dict[str, str] = {}
+    for entry in timeline:
+        sym = entry.get("symptom", "").lower()
+        expr = entry.get("time_expression")
+        if sym and expr and sym not in time_index:
+            time_index[sym] = expr
+
+    result: list[dict] = []
+    for symptom in symptoms:
+        key = symptom.lower()
+        quals = qual_index.get(key, {})
+
+        result.append({
+            "symptom": symptom,
+            "severity": quals.get("severity"),
+            "duration": time_index.get(key),
+            "onset": quals.get("onset"),
+            "pattern": quals.get("pattern"),
+            "progression": quals.get("progression"),
+            "laterality": quals.get("laterality"),
+            "radiation": quals.get("radiation"),
+            "aggravating_factors": list(quals.get("aggravating_factors", [])),
+            "relieving_factors": list(quals.get("relieving_factors", [])),
+        })
+
+    return result
 
 
 # ── helpers ───────────────────────────────────────────────────────

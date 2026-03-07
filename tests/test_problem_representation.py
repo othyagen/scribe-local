@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.problem_representation import build_problem_representation
+from app.problem_representation import (
+    build_problem_representation,
+    build_symptom_representations,
+)
 from app.clinical_state import build_clinical_state
 
 
@@ -297,6 +300,224 @@ class TestDeterminism:
 
 
 # ══════════════════════════════════════════════════════════════════
+# Symptom representations — per-symptom qualifier isolation
+# ══════════════════════════════════════════════════════════════════
+
+
+_SYMPTOM_REP_KEYS = {
+    "symptom", "severity", "duration", "onset", "pattern",
+    "progression", "laterality", "radiation",
+    "aggravating_factors", "relieving_factors",
+}
+
+
+class TestSymptomRepresentationStructure:
+    def test_empty_symptoms(self):
+        reps = build_symptom_representations(_state())
+        assert reps == []
+
+    def test_one_per_symptom(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea", "fever"],
+        ))
+        assert len(reps) == 3
+        assert [r["symptom"] for r in reps] == ["headache", "nausea", "fever"]
+
+    def test_has_expected_keys(self):
+        reps = build_symptom_representations(_state(symptoms=["headache"]))
+        assert set(reps[0].keys()) == _SYMPTOM_REP_KEYS
+
+    def test_preserves_symptom_order(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["fever", "headache", "nausea"],
+        ))
+        assert [r["symptom"] for r in reps] == ["fever", "headache", "nausea"]
+
+
+class TestSymptomRepQualifiers:
+    def test_qualifiers_linked_to_correct_symptom(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea"],
+            qualifiers=[
+                {"symptom": "headache", "qualifiers": {
+                    "severity": "severe", "onset": "sudden",
+                }},
+                {"symptom": "nausea", "qualifiers": {
+                    "severity": "mild", "pattern": "intermittent",
+                }},
+            ],
+        ))
+        headache = reps[0]
+        nausea = reps[1]
+
+        assert headache["severity"] == "severe"
+        assert headache["onset"] == "sudden"
+        assert headache["pattern"] is None  # not from nausea
+
+        assert nausea["severity"] == "mild"
+        assert nausea["pattern"] == "intermittent"
+        assert nausea["onset"] is None  # not from headache
+
+    def test_no_qualifier_inheritance(self):
+        """Core symptom qualifiers must NOT leak to other symptoms."""
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea"],
+            qualifiers=[{
+                "symptom": "headache",
+                "qualifiers": {
+                    "severity": "severe",
+                    "onset": "sudden",
+                    "laterality": "left",
+                    "radiation": "to left arm",
+                    "aggravating_factors": ["movement"],
+                    "relieving_factors": ["rest"],
+                },
+            }],
+        ))
+        nausea = reps[1]
+        assert nausea["severity"] is None
+        assert nausea["onset"] is None
+        assert nausea["laterality"] is None
+        assert nausea["radiation"] is None
+        assert nausea["aggravating_factors"] == []
+        assert nausea["relieving_factors"] == []
+
+    def test_symptom_without_qualifiers_all_none(self):
+        reps = build_symptom_representations(_state(symptoms=["dizziness"]))
+        rep = reps[0]
+        assert rep["severity"] is None
+        assert rep["onset"] is None
+        assert rep["pattern"] is None
+        assert rep["progression"] is None
+        assert rep["laterality"] is None
+        assert rep["radiation"] is None
+        assert rep["aggravating_factors"] == []
+        assert rep["relieving_factors"] == []
+
+    def test_progression_and_laterality(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["knee pain"],
+            qualifiers=[{
+                "symptom": "knee pain",
+                "qualifiers": {
+                    "progression": "worsening",
+                    "laterality": "right",
+                },
+            }],
+        ))
+        assert reps[0]["progression"] == "worsening"
+        assert reps[0]["laterality"] == "right"
+
+
+class TestSymptomRepDuration:
+    def test_duration_from_timeline(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea"],
+            timeline=[
+                {"symptom": "headache", "time_expression": "3 days", "t_start": 0.0},
+                {"symptom": "nausea", "time_expression": "since yesterday", "t_start": 1.0},
+            ],
+        ))
+        assert reps[0]["duration"] == "3 days"
+        assert reps[1]["duration"] == "since yesterday"
+
+    def test_duration_not_shared_across_symptoms(self):
+        """Duration for one symptom must NOT leak to another."""
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea"],
+            timeline=[
+                {"symptom": "headache", "time_expression": "3 days", "t_start": 0.0},
+            ],
+        ))
+        assert reps[0]["duration"] == "3 days"
+        assert reps[1]["duration"] is None
+
+    def test_duration_none_when_no_timeline(self):
+        reps = build_symptom_representations(_state(symptoms=["headache"]))
+        assert reps[0]["duration"] is None
+
+    def test_duration_none_when_timeline_has_no_expression(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["headache"],
+            timeline=[
+                {"symptom": "headache", "time_expression": None, "t_start": 0.0},
+            ],
+        ))
+        assert reps[0]["duration"] is None
+
+
+class TestSymptomRepFactors:
+    def test_factors_per_symptom(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "back pain"],
+            qualifiers=[
+                {"symptom": "headache", "qualifiers": {
+                    "aggravating_factors": ["light", "noise"],
+                    "relieving_factors": ["darkness"],
+                }},
+                {"symptom": "back pain", "qualifiers": {
+                    "aggravating_factors": ["bending"],
+                    "relieving_factors": ["lying down"],
+                }},
+            ],
+        ))
+        assert reps[0]["aggravating_factors"] == ["light", "noise"]
+        assert reps[0]["relieving_factors"] == ["darkness"]
+        assert reps[1]["aggravating_factors"] == ["bending"]
+        assert reps[1]["relieving_factors"] == ["lying down"]
+
+    def test_no_factor_fallback_across_symptoms(self):
+        """Factors must NOT fall back to other symptoms' factors."""
+        reps = build_symptom_representations(_state(
+            symptoms=["headache", "nausea"],
+            qualifiers=[{
+                "symptom": "nausea",
+                "qualifiers": {"aggravating_factors": ["eating"]},
+            }],
+        ))
+        assert reps[0]["aggravating_factors"] == []  # headache: no fallback
+        assert reps[1]["aggravating_factors"] == ["eating"]
+
+
+class TestSymptomRepDeterminism:
+    def test_identical_input_identical_output(self):
+        state = _state(
+            symptoms=["headache", "nausea"],
+            qualifiers=[
+                {"symptom": "headache", "qualifiers": {"severity": "severe"}},
+                {"symptom": "nausea", "qualifiers": {"pattern": "intermittent"}},
+            ],
+            timeline=[
+                {"symptom": "headache", "time_expression": "3 days", "t_start": 0.0},
+            ],
+        )
+        r1 = build_symptom_representations(state)
+        r2 = build_symptom_representations(state)
+        assert r1 == r2
+
+
+class TestSymptomRepCaseInsensitive:
+    def test_case_insensitive_qualifier_match(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["Headache"],
+            qualifiers=[{
+                "symptom": "headache",
+                "qualifiers": {"severity": "severe"},
+            }],
+        ))
+        assert reps[0]["severity"] == "severe"
+
+    def test_case_insensitive_timeline_match(self):
+        reps = build_symptom_representations(_state(
+            symptoms=["Headache"],
+            timeline=[
+                {"symptom": "headache", "time_expression": "3 days", "t_start": 0.0},
+            ],
+        ))
+        assert reps[0]["duration"] == "3 days"
+
+
+# ══════════════════════════════════════════════════════════════════
 # Integration with clinical_state
 # ══════════════════════════════════════════════════════════════════
 
@@ -333,6 +554,47 @@ class TestIntegration:
         # ai_overlay added alongside
         assert state["derived"]["ai_overlay"]["soap_draft"] == "Draft."
 
+    def test_symptom_representations_in_derived(self):
+        state = build_clinical_state([
+            _seg("patient has headache and nausea."),
+        ])
+        assert "symptom_representations" in state["derived"]
+        reps = state["derived"]["symptom_representations"]
+        assert isinstance(reps, list)
+        assert len(reps) >= 2
+        syms = [r["symptom"] for r in reps]
+        assert "headache" in syms
+        assert "nausea" in syms
+
+    def test_symptom_representations_empty_when_no_symptoms(self):
+        state = build_clinical_state([_seg("hello.")])
+        assert state["derived"]["symptom_representations"] == []
+
+    def test_symptom_reps_qualifiers_not_shared(self):
+        """End-to-end: qualifiers detected for one symptom stay on that symptom."""
+        state = build_clinical_state([
+            _seg("severe headache and nausea.",
+                 seg_id="seg_0001", t0=0.0, t1=2.0),
+        ])
+        reps = state["derived"]["symptom_representations"]
+        by_sym = {r["symptom"]: r for r in reps}
+        # "severe" should only be on headache (if detected), never on nausea
+        if "headache" in by_sym and by_sym["headache"]["severity"]:
+            assert by_sym.get("nausea", {}).get("severity") is None
+
+    def test_symptom_reps_preserved_after_ai_overlay(self):
+        from app.llm_overlay import apply_ai_overlay
+
+        state = build_clinical_state([_seg("patient has headache.")])
+        original_reps = list(state["derived"]["symptom_representations"])
+
+        overlay = {
+            "ai_overlay": {"soap_draft": "Draft."},
+            "ai_overlay_meta": {"model": "test"},
+        }
+        apply_ai_overlay(state, overlay)
+        assert state["derived"]["symptom_representations"] == original_reps
+
     def test_full_example(self):
         segments = [
             _seg("patient reports severe headache for 3 days.",
@@ -350,3 +612,10 @@ class TestIntegration:
         assert isinstance(pr["pertinent_negatives"], list)
         assert isinstance(pr["diagnostic_hints"], list)
         assert isinstance(pr["timeline"], list)
+
+        # symptom_representations also populated
+        reps = state["derived"]["symptom_representations"]
+        assert len(reps) >= 2
+        # Each symptom has its own entry
+        rep_syms = {r["symptom"] for r in reps}
+        assert pr["core_symptom"] in rep_syms

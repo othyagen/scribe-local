@@ -24,7 +24,10 @@ from app.review_flags import generate_review_flags
 from app.diagnostic_hints import generate_diagnostic_hints
 from app.history_extraction import extract_history_context
 from app.qualifier_extraction import extract_qualifiers
-from app.problem_representation import build_problem_representation
+from app.problem_representation import (
+    build_problem_representation,
+    build_symptom_representations,
+)
 
 
 def build_clinical_state(
@@ -82,9 +85,11 @@ def build_clinical_state(
     }
 
     pr = build_problem_representation(state)
+    symptom_reps = build_symptom_representations(state)
     state["derived"] = {
         "problem_representation": pr,
         "problem_focus": pr.get("core_symptom"),
+        "symptom_representations": symptom_reps,
     }
 
     return state

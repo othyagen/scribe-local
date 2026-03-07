@@ -1,0 +1,73 @@
+"""Structured clinical state — assembles all deterministic pipeline outputs.
+
+Orchestrates existing extractor, review-flag, timeline, and diagnostic-hint
+modules into a single dictionary.  No new extraction logic — this module
+only calls and collects.
+
+The returned structure is designed to be easily extensible with future
+fields (problem_representation, objective_findings, labs, etc.) without
+breaking existing consumers.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from app.extractors import (
+    extract_symptoms,
+    extract_negations,
+    extract_durations,
+    extract_medications,
+)
+from app.symptom_timeline import extract_symptom_timeline
+from app.review_flags import generate_review_flags
+from app.diagnostic_hints import generate_diagnostic_hints
+
+
+def build_clinical_state(
+    segments: list[dict],
+    speaker_roles: Optional[dict[str, dict]] = None,
+    confidence_entries: Optional[list[dict]] = None,
+) -> dict:
+    """Build a structured clinical state from normalized segments.
+
+    Assembles outputs from all deterministic extraction modules into
+    a single dictionary.
+
+    Args:
+        segments: list of normalized segment dicts (with ``normalized_text``).
+        speaker_roles: optional ``{speaker_id: {role, confidence, evidence}}``.
+        confidence_entries: optional list of per-segment ASR quality dicts.
+
+    Returns:
+        dict with keys: ``symptoms``, ``durations``, ``negations``,
+        ``medications``, ``timeline``, ``review_flags``,
+        ``diagnostic_hints``, ``speaker_roles``.
+    """
+    full_text = " ".join(
+        seg.get("normalized_text", "") for seg in segments
+    ).strip()
+
+    symptoms = extract_symptoms(full_text)
+    negations = extract_negations(full_text)
+    durations = extract_durations(full_text)
+    medications = extract_medications(full_text)
+
+    timeline = extract_symptom_timeline(segments)
+
+    review_flags = generate_review_flags(
+        segments, confidence_entries=confidence_entries,
+    )
+
+    diagnostic_hints = generate_diagnostic_hints(symptoms, negations)
+
+    return {
+        "symptoms": symptoms,
+        "durations": durations,
+        "negations": negations,
+        "medications": medications,
+        "timeline": timeline,
+        "review_flags": review_flags,
+        "diagnostic_hints": diagnostic_hints,
+        "speaker_roles": speaker_roles,
+    }

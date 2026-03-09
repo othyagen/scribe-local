@@ -63,6 +63,32 @@ class DiarizationConfig:
 
 
 @dataclass
+class AiConfig:
+    enabled: bool = False
+    provider: str = "openai"
+    model: str = "gpt-4.1-mini"
+    temperature: float = 0.2
+    prompts: dict = field(default_factory=lambda: {
+        "soap": "soap/v1.txt",
+        "summary": "summary/v1.txt",
+        "follow_up": "follow_up/v1.txt",
+        "problem_representation": "problem_representation/v1.txt",
+    })
+    prompts_dir: str = "prompts"
+
+
+@dataclass
+class ClassificationConfig:
+    enabled: bool = False
+    system: str = "none"
+
+
+@dataclass
+class ExportConfig:
+    fhir_enabled: bool = False
+
+
+@dataclass
 class ReportingConfig:
     session_report_enabled: bool = True
 
@@ -84,6 +110,9 @@ class AppConfig:
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
     normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
+    classification: ClassificationConfig = field(default_factory=ClassificationConfig)
+    export: ExportConfig = field(default_factory=ExportConfig)
+    ai: AiConfig = field(default_factory=AiConfig)
 
 
 def load_config(path: str) -> AppConfig:
@@ -103,6 +132,9 @@ def _build_config(data: dict) -> AppConfig:
         diarization=_build_diarization(data.get("diarization", {})),
         normalization=_build_normalization(data.get("normalization", {})),
         reporting=_build_reporting(data.get("reporting", {})),
+        classification=_build_classification(data.get("classification", {})),
+        export=_build_export(data.get("export", {})),
+        ai=_build_ai(data.get("ai", {})),
     )
 
 
@@ -187,6 +219,36 @@ def _build_reporting(d: dict) -> ReportingConfig:
     )
 
 
+def _build_classification(d: dict) -> ClassificationConfig:
+    return ClassificationConfig(
+        enabled=d.get("enabled", False),
+        system=d.get("system", "none"),
+    )
+
+
+def _build_export(d: dict) -> ExportConfig:
+    return ExportConfig(
+        fhir_enabled=d.get("fhir_enabled", False),
+    )
+
+
+def _build_ai(d: dict) -> AiConfig:
+    default_prompts = {
+        "soap": "soap/v1.txt",
+        "summary": "summary/v1.txt",
+        "follow_up": "follow_up/v1.txt",
+        "problem_representation": "problem_representation/v1.txt",
+    }
+    return AiConfig(
+        enabled=d.get("enabled", False),
+        provider=d.get("provider", "openai"),
+        model=d.get("model", "gpt-4.1-mini"),
+        temperature=d.get("temperature", 0.2),
+        prompts=d.get("prompts", default_prompts),
+        prompts_dir=d.get("prompts_dir", "prompts"),
+    )
+
+
 def apply_cli_overrides(config: AppConfig, args: argparse.Namespace) -> AppConfig:
     """Merge CLI arguments into the loaded config (CLI wins)."""
     if args.language:
@@ -211,6 +273,10 @@ def apply_cli_overrides(config: AppConfig, args: argparse.Namespace) -> AppConfi
         config.audio.precheck_enabled = False
     if getattr(args, "audio_precheck_seconds", None) is not None:
         config.audio.precheck_seconds = args.audio_precheck_seconds
+    if getattr(args, "ai", None) is True:
+        config.ai.enabled = True
+    elif getattr(args, "no_ai", None) is True:
+        config.ai.enabled = False
     return config
 
 
@@ -338,4 +404,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Remove a custom lexicon term (e.g. --remove-term pt)")
     p.add_argument("--list-terms", action="store_true", default=False,
                     help="List all custom lexicon terms and exit")
+
+    # AI overlay
+    p.add_argument("--ai", action="store_true", default=None,
+                    help="Enable AI overlay (overrides config)")
+    p.add_argument("--no-ai", action="store_true", default=None,
+                    help="Disable AI overlay (overrides config)")
     return p

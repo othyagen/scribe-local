@@ -1,0 +1,4 @@
+{
+    "_comment": "Conservative ICD-10 pattern-level mappings — only when evidence is strong",
+    "migraine_like": {"code": "G43.909", "label": "Migraine, unspecified, not intractable, without status migrainosus", "kind": "pattern"}
+}

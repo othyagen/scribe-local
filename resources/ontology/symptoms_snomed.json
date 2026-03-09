@@ -1,56 +1,17 @@
 {
+
+    "_comment_constitutional": "── Constitutional ──────────────────────────",
+
     "anxiety": {
         "system": "SNOMED",
         "code": "48694002",
         "display": "Anxiety",
         "type": "symptom"
     },
-    "bleeding": {
-        "system": "SNOMED",
-        "code": "131148009",
-        "display": "Bleeding",
-        "type": "symptom"
-    },
-    "chest pain": {
-        "system": "SNOMED",
-        "code": "29857009",
-        "display": "Chest pain",
-        "type": "symptom"
-    },
     "chills": {
         "system": "SNOMED",
         "code": "43724002",
         "display": "Chills",
-        "type": "symptom"
-    },
-    "congestion": {
-        "system": "SNOMED",
-        "code": "68235000",
-        "display": "Nasal congestion",
-        "type": "symptom"
-    },
-    "cough": {
-        "system": "SNOMED",
-        "code": "49727002",
-        "display": "Cough",
-        "type": "symptom"
-    },
-    "cramps": {
-        "system": "SNOMED",
-        "code": "55300003",
-        "display": "Cramp",
-        "type": "symptom"
-    },
-    "diarrhea": {
-        "system": "SNOMED",
-        "code": "62315008",
-        "display": "Diarrhea",
-        "type": "symptom"
-    },
-    "dizziness": {
-        "system": "SNOMED",
-        "code": "404640003",
-        "display": "Dizziness",
         "type": "symptom"
     },
     "fatigue": {
@@ -65,28 +26,22 @@
         "display": "Fever",
         "type": "symptom"
     },
-    "headache": {
-        "system": "SNOMED",
-        "code": "25064002",
-        "display": "Headache",
-        "type": "symptom"
-    },
     "insomnia": {
         "system": "SNOMED",
         "code": "193462001",
         "display": "Insomnia",
         "type": "symptom"
     },
-    "nausea": {
+    "malaise": {
         "system": "SNOMED",
-        "code": "422587007",
-        "display": "Nausea",
+        "code": "367391008",
+        "display": "Malaise",
         "type": "symptom"
     },
-    "numbness": {
+    "night sweats": {
         "system": "SNOMED",
-        "code": "44077006",
-        "display": "Numbness",
+        "code": "42984000",
+        "display": "Night sweats",
         "type": "symptom"
     },
     "pain": {
@@ -95,16 +50,142 @@
         "display": "Pain",
         "type": "symptom"
     },
-    "palpitations": {
+    "weakness": {
         "system": "SNOMED",
-        "code": "80313002",
-        "display": "Palpitations",
+        "code": "13791008",
+        "display": "Weakness",
         "type": "symptom"
     },
-    "rash": {
+    "weight gain": {
         "system": "SNOMED",
-        "code": "271807003",
-        "display": "Rash",
+        "code": "8943002",
+        "display": "Weight gain",
+        "type": "symptom"
+    },
+    "weight loss": {
+        "system": "SNOMED",
+        "code": "89362005",
+        "display": "Weight loss",
+        "type": "symptom"
+    },
+    "loss of appetite": {
+        "system": "SNOMED",
+        "code": "79890006",
+        "display": "Loss of appetite",
+        "type": "symptom"
+    },
+
+    "_comment_neurologic": "── Neurologic ──────────────────────────────",
+
+    "confusion": {
+        "system": "SNOMED",
+        "code": "40917007",
+        "display": "Confusion",
+        "type": "symptom"
+    },
+    "dizziness": {
+        "system": "SNOMED",
+        "code": "404640003",
+        "display": "Dizziness",
+        "type": "symptom"
+    },
+    "headache": {
+        "system": "SNOMED",
+        "code": "25064002",
+        "display": "Headache",
+        "type": "symptom"
+    },
+    "memory loss": {
+        "system": "SNOMED",
+        "code": "48167000",
+        "display": "Amnesia",
+        "type": "symptom"
+    },
+    "numbness": {
+        "system": "SNOMED",
+        "code": "44077006",
+        "display": "Numbness",
+        "type": "symptom"
+    },
+    "seizure": {
+        "system": "SNOMED",
+        "code": "91175000",
+        "display": "Seizure",
+        "type": "symptom"
+    },
+    "syncope": {
+        "system": "SNOMED",
+        "code": "271594007",
+        "display": "Syncope",
+        "type": "symptom"
+    },
+    "tingling": {
+        "system": "SNOMED",
+        "code": "62507009",
+        "display": "Tingling",
+        "type": "symptom"
+    },
+    "tremor": {
+        "system": "SNOMED",
+        "code": "26079004",
+        "display": "Tremor",
+        "type": "symptom"
+    },
+    "vertigo": {
+        "system": "SNOMED",
+        "code": "399153001",
+        "display": "Vertigo",
+        "type": "symptom"
+    },
+    "blurred vision": {
+        "system": "SNOMED",
+        "code": "246636008",
+        "display": "Blurred vision",
+        "type": "symptom"
+    },
+    "double vision": {
+        "system": "SNOMED",
+        "code": "24982008",
+        "display": "Diplopia",
+        "type": "symptom"
+    },
+    "tinnitus": {
+        "system": "SNOMED",
+        "code": "60862001",
+        "display": "Tinnitus",
+        "type": "symptom"
+    },
+    "hearing loss": {
+        "system": "SNOMED",
+        "code": "15188001",
+        "display": "Hearing loss",
+        "type": "symptom"
+    },
+
+    "_comment_respiratory": "── Respiratory ─────────────────────────────",
+
+    "congestion": {
+        "system": "SNOMED",
+        "code": "68235000",
+        "display": "Nasal congestion",
+        "type": "symptom"
+    },
+    "cough": {
+        "system": "SNOMED",
+        "code": "49727002",
+        "display": "Cough",
+        "type": "symptom"
+    },
+    "dyspnea": {
+        "system": "SNOMED",
+        "code": "267036007",
+        "display": "Dyspnea",
+        "type": "symptom"
+    },
+    "hemoptysis": {
+        "system": "SNOMED",
+        "code": "66857006",
+        "display": "Hemoptysis",
         "type": "symptom"
     },
     "shortness of breath": {
@@ -113,10 +194,256 @@
         "display": "Shortness of breath",
         "type": "symptom"
     },
+    "sneezing": {
+        "system": "SNOMED",
+        "code": "162367006",
+        "display": "Sneezing",
+        "type": "symptom"
+    },
     "sore throat": {
         "system": "SNOMED",
         "code": "162397003",
         "display": "Sore throat",
+        "type": "symptom"
+    },
+    "wheezing": {
+        "system": "SNOMED",
+        "code": "56018004",
+        "display": "Wheezing",
+        "type": "symptom"
+    },
+    "hoarseness": {
+        "system": "SNOMED",
+        "code": "50219008",
+        "display": "Hoarseness",
+        "type": "symptom"
+    },
+    "nasal discharge": {
+        "system": "SNOMED",
+        "code": "64531003",
+        "display": "Nasal discharge",
+        "type": "symptom"
+    },
+    "sputum production": {
+        "system": "SNOMED",
+        "code": "49727002",
+        "display": "Productive cough",
+        "type": "symptom"
+    },
+
+    "_comment_cardiac": "── Cardiac ─────────────────────────────────",
+
+    "chest pain": {
+        "system": "SNOMED",
+        "code": "29857009",
+        "display": "Chest pain",
+        "type": "symptom"
+    },
+    "chest tightness": {
+        "system": "SNOMED",
+        "code": "23924001",
+        "display": "Chest tightness",
+        "type": "symptom"
+    },
+    "edema": {
+        "system": "SNOMED",
+        "code": "267038008",
+        "display": "Edema",
+        "type": "symptom"
+    },
+    "palpitations": {
+        "system": "SNOMED",
+        "code": "80313002",
+        "display": "Palpitations",
+        "type": "symptom"
+    },
+    "orthopnea": {
+        "system": "SNOMED",
+        "code": "62744007",
+        "display": "Orthopnea",
+        "type": "symptom"
+    },
+    "leg swelling": {
+        "system": "SNOMED",
+        "code": "449614009",
+        "display": "Swelling of lower extremity",
+        "type": "symptom"
+    },
+
+    "_comment_gastrointestinal": "── Gastrointestinal ────────────────────────",
+
+    "abdominal pain": {
+        "system": "SNOMED",
+        "code": "21522001",
+        "display": "Abdominal pain",
+        "type": "symptom"
+    },
+    "bloating": {
+        "system": "SNOMED",
+        "code": "248490000",
+        "display": "Bloating",
+        "type": "symptom"
+    },
+    "constipation": {
+        "system": "SNOMED",
+        "code": "14760008",
+        "display": "Constipation",
+        "type": "symptom"
+    },
+    "cramps": {
+        "system": "SNOMED",
+        "code": "55300003",
+        "display": "Cramp",
+        "type": "symptom"
+    },
+    "diarrhea": {
+        "system": "SNOMED",
+        "code": "62315008",
+        "display": "Diarrhea",
+        "type": "symptom"
+    },
+    "difficulty swallowing": {
+        "system": "SNOMED",
+        "code": "40739000",
+        "display": "Dysphagia",
+        "type": "symptom"
+    },
+    "dysphagia": {
+        "system": "SNOMED",
+        "code": "40739000",
+        "display": "Dysphagia",
+        "type": "symptom"
+    },
+    "heartburn": {
+        "system": "SNOMED",
+        "code": "16331000",
+        "display": "Heartburn",
+        "type": "symptom"
+    },
+    "nausea": {
+        "system": "SNOMED",
+        "code": "422587007",
+        "display": "Nausea",
+        "type": "symptom"
+    },
+    "rectal bleeding": {
+        "system": "SNOMED",
+        "code": "12063002",
+        "display": "Rectal bleeding",
+        "type": "symptom"
+    },
+    "vomiting": {
+        "system": "SNOMED",
+        "code": "422400008",
+        "display": "Vomiting",
+        "type": "symptom"
+    },
+    "bleeding": {
+        "system": "SNOMED",
+        "code": "131148009",
+        "display": "Bleeding",
+        "type": "symptom"
+    },
+    "loss of taste": {
+        "system": "SNOMED",
+        "code": "36955009",
+        "display": "Loss of taste",
+        "type": "symptom"
+    },
+    "loss of smell": {
+        "system": "SNOMED",
+        "code": "44169009",
+        "display": "Loss of smell",
+        "type": "symptom"
+    },
+
+    "_comment_genitourinary": "── Genitourinary ───────────────────────────",
+
+    "dysuria": {
+        "system": "SNOMED",
+        "code": "49650001",
+        "display": "Dysuria",
+        "type": "symptom"
+    },
+    "frequent urination": {
+        "system": "SNOMED",
+        "code": "162116003",
+        "display": "Urinary frequency",
+        "type": "symptom"
+    },
+    "hematuria": {
+        "system": "SNOMED",
+        "code": "34436003",
+        "display": "Hematuria",
+        "type": "symptom"
+    },
+    "painful urination": {
+        "system": "SNOMED",
+        "code": "49650001",
+        "display": "Dysuria",
+        "type": "symptom"
+    },
+    "urinary frequency": {
+        "system": "SNOMED",
+        "code": "162116003",
+        "display": "Urinary frequency",
+        "type": "symptom"
+    },
+    "urinary incontinence": {
+        "system": "SNOMED",
+        "code": "165232002",
+        "display": "Urinary incontinence",
+        "type": "symptom"
+    },
+    "urinary urgency": {
+        "system": "SNOMED",
+        "code": "75088002",
+        "display": "Urinary urgency",
+        "type": "symptom"
+    },
+    "flank pain": {
+        "system": "SNOMED",
+        "code": "247355005",
+        "display": "Flank pain",
+        "type": "symptom"
+    },
+
+    "_comment_musculoskeletal": "── Musculoskeletal ─────────────────────────",
+
+    "back pain": {
+        "system": "SNOMED",
+        "code": "161891005",
+        "display": "Back pain",
+        "type": "symptom"
+    },
+    "joint pain": {
+        "system": "SNOMED",
+        "code": "57676002",
+        "display": "Joint pain",
+        "type": "symptom"
+    },
+    "joint swelling": {
+        "system": "SNOMED",
+        "code": "298869003",
+        "display": "Joint swelling",
+        "type": "symptom"
+    },
+    "muscle pain": {
+        "system": "SNOMED",
+        "code": "68962001",
+        "display": "Muscle pain",
+        "type": "symptom"
+    },
+    "muscle weakness": {
+        "system": "SNOMED",
+        "code": "26544005",
+        "display": "Muscle weakness",
+        "type": "symptom"
+    },
+    "neck pain": {
+        "system": "SNOMED",
+        "code": "81680005",
+        "display": "Neck pain",
         "type": "symptom"
     },
     "stiffness": {
@@ -131,22 +458,448 @@
         "display": "Swelling",
         "type": "symptom"
     },
-    "tingling": {
+    "limited range of motion": {
         "system": "SNOMED",
-        "code": "62507009",
-        "display": "Tingling",
+        "code": "304281009",
+        "display": "Limited range of motion",
         "type": "symptom"
     },
-    "vomiting": {
+    "shoulder pain": {
         "system": "SNOMED",
-        "code": "422400008",
-        "display": "Vomiting",
+        "code": "45326000",
+        "display": "Shoulder pain",
         "type": "symptom"
     },
-    "weakness": {
+    "knee pain": {
         "system": "SNOMED",
-        "code": "13791008",
-        "display": "Weakness",
+        "code": "30989003",
+        "display": "Knee pain",
+        "type": "symptom"
+    },
+    "hip pain": {
+        "system": "SNOMED",
+        "code": "49218002",
+        "display": "Hip pain",
+        "type": "symptom"
+    },
+
+    "_comment_skin": "── Skin ────────────────────────────────────",
+
+    "bruising": {
+        "system": "SNOMED",
+        "code": "302227002",
+        "display": "Bruising",
+        "type": "symptom"
+    },
+    "dry skin": {
+        "system": "SNOMED",
+        "code": "16386004",
+        "display": "Dry skin",
+        "type": "symptom"
+    },
+    "hair loss": {
+        "system": "SNOMED",
+        "code": "278040002",
+        "display": "Hair loss",
+        "type": "symptom"
+    },
+    "itching": {
+        "system": "SNOMED",
+        "code": "418290006",
+        "display": "Itching",
+        "type": "symptom"
+    },
+    "rash": {
+        "system": "SNOMED",
+        "code": "271807003",
+        "display": "Rash",
+        "type": "symptom"
+    },
+    "skin lesion": {
+        "system": "SNOMED",
+        "code": "95324001",
+        "display": "Skin lesion",
+        "type": "symptom"
+    },
+    "wound": {
+        "system": "SNOMED",
+        "code": "13924000",
+        "display": "Wound",
+        "type": "symptom"
+    },
+    "hives": {
+        "system": "SNOMED",
+        "code": "126485001",
+        "display": "Urticaria",
+        "type": "symptom"
+    },
+
+    "_comment_psychiatric": "── Psychiatric ─────────────────────────────",
+
+    "agitation": {
+        "system": "SNOMED",
+        "code": "24199005",
+        "display": "Agitation",
+        "type": "symptom"
+    },
+    "depressed mood": {
+        "system": "SNOMED",
+        "code": "366979004",
+        "display": "Depressed mood",
+        "type": "symptom"
+    },
+    "hallucinations": {
+        "system": "SNOMED",
+        "code": "7011001",
+        "display": "Hallucination",
+        "type": "symptom"
+    },
+    "irritability": {
+        "system": "SNOMED",
+        "code": "55929007",
+        "display": "Irritability",
+        "type": "symptom"
+    },
+    "panic": {
+        "system": "SNOMED",
+        "code": "79823003",
+        "display": "Panic",
+        "type": "symptom"
+    },
+    "poor concentration": {
+        "system": "SNOMED",
+        "code": "76039006",
+        "display": "Difficulty concentrating",
+        "type": "symptom"
+    },
+    "suicidal ideation": {
+        "system": "SNOMED",
+        "code": "6471006",
+        "display": "Suicidal ideation",
+        "type": "symptom"
+    },
+
+    "_comment_endocrine_metabolic": "── Endocrine / Metabolic ───────────────────",
+
+    "polyuria": {
+        "system": "SNOMED",
+        "code": "56574000",
+        "display": "Polyuria",
+        "type": "symptom"
+    },
+    "polydipsia": {
+        "system": "SNOMED",
+        "code": "17173007",
+        "display": "Polydipsia",
+        "type": "symptom"
+    },
+    "polyphagia": {
+        "system": "SNOMED",
+        "code": "32230006",
+        "display": "Polyphagia",
+        "type": "symptom"
+    },
+    "cold intolerance": {
+        "system": "SNOMED",
+        "code": "248491001",
+        "display": "Cold intolerance",
+        "type": "symptom"
+    },
+    "excessive sweating": {
+        "system": "SNOMED",
+        "code": "52613005",
+        "display": "Excessive sweating",
+        "type": "symptom"
+    },
+    "increased thirst": {
+        "system": "SNOMED",
+        "code": "59299002",
+        "display": "Increased thirst",
+        "type": "symptom"
+    },
+    "increased appetite": {
+        "system": "SNOMED",
+        "code": "72405004",
+        "display": "Increased appetite",
+        "type": "symptom"
+    },
+    "decreased appetite": {
+        "system": "SNOMED",
+        "code": "64379006",
+        "display": "Decreased appetite",
+        "type": "symptom"
+    },
+    "heat intolerance": {
+        "system": "SNOMED",
+        "code": "18772005",
+        "display": "Heat intolerance",
+        "type": "symptom"
+    },
+
+    "_comment_ophthalmologic": "── Ophthalmologic ──────────────────────────",
+
+    "eye pain": {
+        "system": "SNOMED",
+        "code": "41652007",
+        "display": "Eye pain",
+        "type": "symptom"
+    },
+    "eye redness": {
+        "system": "SNOMED",
+        "code": "75705005",
+        "display": "Red eye",
+        "type": "symptom"
+    },
+    "photophobia": {
+        "system": "SNOMED",
+        "code": "409668002",
+        "display": "Photophobia",
+        "type": "symptom"
+    },
+    "visual loss": {
+        "system": "SNOMED",
+        "code": "397540003",
+        "display": "Visual impairment",
+        "type": "symptom"
+    },
+    "floaters": {
+        "system": "SNOMED",
+        "code": "73905001",
+        "display": "Floaters",
+        "type": "symptom"
+    },
+    "visual field defect": {
+        "system": "SNOMED",
+        "code": "12184005",
+        "display": "Visual field defect",
+        "type": "symptom"
+    },
+    "eye discharge": {
+        "system": "SNOMED",
+        "code": "246679005",
+        "display": "Eye discharge",
+        "type": "symptom"
+    },
+    "dry eyes": {
+        "system": "SNOMED",
+        "code": "162290004",
+        "display": "Dry eyes",
+        "type": "symptom"
+    },
+    "excessive tearing": {
+        "system": "SNOMED",
+        "code": "418290006",
+        "display": "Excessive tearing",
+        "type": "symptom"
+    },
+
+    "_comment_ent": "── ENT ─────────────────────────────────────",
+
+    "ear pain": {
+        "system": "SNOMED",
+        "code": "16001004",
+        "display": "Otalgia",
+        "type": "symptom"
+    },
+    "ear discharge": {
+        "system": "SNOMED",
+        "code": "300128000",
+        "display": "Ear discharge",
+        "type": "symptom"
+    },
+    "nasal congestion": {
+        "system": "SNOMED",
+        "code": "68235000",
+        "display": "Nasal congestion",
+        "type": "symptom"
+    },
+    "epistaxis": {
+        "system": "SNOMED",
+        "code": "12441001",
+        "display": "Epistaxis",
+        "type": "symptom"
+    },
+    "nosebleed": {
+        "system": "SNOMED",
+        "code": "12441001",
+        "display": "Epistaxis",
+        "type": "symptom"
+    },
+    "postnasal drip": {
+        "system": "SNOMED",
+        "code": "68235000",
+        "display": "Postnasal drip",
+        "type": "symptom"
+    },
+    "facial pain": {
+        "system": "SNOMED",
+        "code": "95668009",
+        "display": "Facial pain",
+        "type": "symptom"
+    },
+    "jaw pain": {
+        "system": "SNOMED",
+        "code": "274667000",
+        "display": "Jaw pain",
+        "type": "symptom"
+    },
+    "mouth sores": {
+        "system": "SNOMED",
+        "code": "26284000",
+        "display": "Oral ulcer",
+        "type": "symptom"
+    },
+    "dry mouth": {
+        "system": "SNOMED",
+        "code": "56893005",
+        "display": "Xerostomia",
+        "type": "symptom"
+    },
+
+    "_comment_gynecologic_obstetric": "── Gynecologic / Obstetric ─────────────────",
+
+    "vaginal bleeding": {
+        "system": "SNOMED",
+        "code": "266784003",
+        "display": "Vaginal bleeding",
+        "type": "symptom"
+    },
+    "vaginal discharge": {
+        "system": "SNOMED",
+        "code": "271939006",
+        "display": "Vaginal discharge",
+        "type": "symptom"
+    },
+    "pelvic pain": {
+        "system": "SNOMED",
+        "code": "30473006",
+        "display": "Pelvic pain",
+        "type": "symptom"
+    },
+    "dyspareunia": {
+        "system": "SNOMED",
+        "code": "71315007",
+        "display": "Dyspareunia",
+        "type": "symptom"
+    },
+    "amenorrhea": {
+        "system": "SNOMED",
+        "code": "14302001",
+        "display": "Amenorrhea",
+        "type": "symptom"
+    },
+    "dysmenorrhea": {
+        "system": "SNOMED",
+        "code": "431237007",
+        "display": "Dysmenorrhea",
+        "type": "symptom"
+    },
+    "menorrhagia": {
+        "system": "SNOMED",
+        "code": "386692008",
+        "display": "Menorrhagia",
+        "type": "symptom"
+    },
+    "irregular menses": {
+        "system": "SNOMED",
+        "code": "64996003",
+        "display": "Irregular menstruation",
+        "type": "symptom"
+    },
+    "breast pain": {
+        "system": "SNOMED",
+        "code": "53430007",
+        "display": "Breast pain",
+        "type": "symptom"
+    },
+    "breast lump": {
+        "system": "SNOMED",
+        "code": "89164003",
+        "display": "Breast lump",
+        "type": "symptom"
+    },
+
+    "_comment_male_reproductive": "── Male Reproductive ───────────────────────",
+
+    "testicular pain": {
+        "system": "SNOMED",
+        "code": "63901009",
+        "display": "Testicular pain",
+        "type": "symptom"
+    },
+    "scrotal swelling": {
+        "system": "SNOMED",
+        "code": "300879008",
+        "display": "Scrotal swelling",
+        "type": "symptom"
+    },
+    "penile discharge": {
+        "system": "SNOMED",
+        "code": "68566005",
+        "display": "Urethral discharge",
+        "type": "symptom"
+    },
+    "erectile dysfunction": {
+        "system": "SNOMED",
+        "code": "860914002",
+        "display": "Erectile dysfunction",
+        "type": "symptom"
+    },
+    "genital lesion": {
+        "system": "SNOMED",
+        "code": "300479008",
+        "display": "Genital lesion",
+        "type": "symptom"
+    },
+    "reduced libido": {
+        "system": "SNOMED",
+        "code": "248095000",
+        "display": "Decreased libido",
+        "type": "symptom"
+    },
+
+    "_comment_hematologic_lymphatic": "── Hematologic / Lymphatic ─────────────────",
+
+    "easy bruising": {
+        "system": "SNOMED",
+        "code": "302227002",
+        "display": "Easy bruising",
+        "type": "symptom"
+    },
+    "bleeding tendency": {
+        "system": "SNOMED",
+        "code": "12063002",
+        "display": "Bleeding tendency",
+        "type": "symptom"
+    },
+    "lymph node swelling": {
+        "system": "SNOMED",
+        "code": "30746006",
+        "display": "Lymphadenopathy",
+        "type": "symptom"
+    },
+    "lymphadenopathy": {
+        "system": "SNOMED",
+        "code": "30746006",
+        "display": "Lymphadenopathy",
+        "type": "symptom"
+    },
+    "pallor": {
+        "system": "SNOMED",
+        "code": "398979000",
+        "display": "Pallor",
+        "type": "symptom"
+    },
+    "petechiae": {
+        "system": "SNOMED",
+        "code": "271813007",
+        "display": "Petechiae",
+        "type": "symptom"
+    },
+    "splenomegaly": {
+        "system": "SNOMED",
+        "code": "16294009",
+        "display": "Splenomegaly",
         "type": "symptom"
     }
 }

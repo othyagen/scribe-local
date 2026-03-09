@@ -11,6 +11,7 @@ breaking existing consumers.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from app.extractors import (
@@ -31,12 +32,18 @@ from app.problem_representation import (
 from app.problem_summary import summarize_problem
 from app.ontology_mapper import map_symptoms_to_concepts
 from app.pattern_matcher import match_clinical_patterns
+from app.live_summary import build_running_summary
+from app.temporal_normalizer import normalize_timeline
+from app.temporal_reasoner import derive_temporal_context
+from app.red_flag_detector import detect_red_flags
+from app.output_selector import apply_optional_outputs
 
 
 def build_clinical_state(
     segments: list[dict],
     speaker_roles: Optional[dict[str, dict]] = None,
     confidence_entries: Optional[list[dict]] = None,
+    config: object | None = None,
 ) -> dict:
     """Build a structured clinical state from normalized segments.
 
@@ -97,5 +104,13 @@ def build_clinical_state(
     state["derived"]["problem_summary"] = summarize_problem(state)
     state["derived"]["ontology_concepts"] = map_symptoms_to_concepts(state)
     state["derived"]["clinical_patterns"] = match_clinical_patterns(state)
+    state["derived"]["running_summary"] = build_running_summary(state)
+    state["derived"]["normalized_timeline"] = normalize_timeline(
+        timeline, reference_date=datetime.now(),
+    )
+    state["derived"]["temporal_context"] = derive_temporal_context(state)
+    state["derived"]["red_flags"] = detect_red_flags(state)
+
+    apply_optional_outputs(state, config)
 
     return state

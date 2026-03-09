@@ -2,5 +2,6 @@
 __pycache__/
 *.pyc
 outputs/
+test_data/
 .pytest_cache/
 =2.1

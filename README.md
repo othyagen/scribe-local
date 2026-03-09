@@ -193,8 +193,20 @@ Each layer has a single responsibility:
 | `clinical_state.py` | Structured clinical state assembly from all extraction modules |
 | `problem_representation.py` | Deterministic structured problem representation from clinical state |
 | `problem_summary.py` | Deterministic human-readable problem summary from core symptom |
-| `ontology_mapper.py` | Lightweight file-based symptom-to-SNOMED concept mapping |
+| `ontology_mapper.py` | Lightweight file-based symptom-to-SNOMED concept mapping (143 SNOMED CT entries) |
 | `pattern_matcher.py` | Deterministic rule-based clinical pattern detection |
+| `live_summary.py` | Running clinical summary aggregation for live display |
+| `qualifier_extraction.py` | Per-symptom qualifier extraction (severity, onset, pattern, etc.) |
+| `history_extraction.py` | Patient history/context extraction from transcript |
+| `temporal_normalizer.py` | ISO date/duration normalization of time expressions |
+| `temporal_reasoner.py` | Clinical onset ordering, progression tracking, temporal uncertainty |
+| `red_flag_detector.py` | High-risk clinical constellation detection |
+| `classification_router.py` | Configurable classification system selector (ICPC / ICD-10) |
+| `icpc_mapper.py` | ICPC-2 code suggestion from symptoms (105 curated mappings) |
+| `icd_mapper.py` | ICD-10 code suggestion with symptom + pattern level mapping |
+| `fhir_exporter.py` | Deterministic FHIR Bundle export (Encounter, Observation, Condition, Composition) |
+| `output_selector.py` | Centralized control of optional outputs (classification, FHIR, AI overlay) |
+| `llm_overlay.py` | Optional AI-generated clinical text overlay (provider-abstracted) |
 | `export_bundle.py` | Session artifact bundling (directory or ZIP export) |
 | `role_detection.py` | Deterministic speaker role classification (clinician/patient) |
 | `main.py` | Pipeline orchestration |
@@ -1001,7 +1013,7 @@ Returned structure (one entry per mapped symptom, preserving order):
 ]
 ```
 
-The shipped mapping (`resources/ontology/symptoms_snomed.json`) covers all 25 symptoms in the extractor vocabulary. Unknown symptoms are silently skipped (no fuzzy matching). Duplicate concepts (same code) are not repeated.
+The shipped mapping (`resources/ontology/symptoms_snomed.json`) covers 143 symptoms across 15 body-system categories (constitutional, neurologic, respiratory, cardiac, gastrointestinal, genitourinary, musculoskeletal, skin, psychiatric, endocrine/metabolic, ophthalmologic, ENT, gynecologic/obstetric, male reproductive, hematologic/lymphatic). Unknown symptoms are silently skipped (no fuzzy matching). Duplicate concepts (same code) are not repeated.
 
 Currently maps symptoms only. Medications, procedures, and diagnoses are not yet mapped.
 
@@ -1059,6 +1071,192 @@ Returned structure:
 Evidence reflects the exact matched findings. No duplicate patterns are emitted. Multiple patterns can match simultaneously (e.g. migraine-like + gastroenteritis-like when headache, nausea, and diarrhea are all present).
 
 No ML, no LLM, no external API calls. Additive only — does not modify any existing structured data.
+
+### Temporal Normalizer
+
+`normalize_timeline()` converts time expressions from the symptom timeline into standardised ISO formats. Pure function — no LLM, no external APIs.
+
+```python
+from app.temporal_normalizer import normalize_timeline
+from datetime import datetime
+
+normalized = normalize_timeline(timeline, reference_date=datetime(2026, 3, 8))
+```
+
+Automatically computed by `build_clinical_state()` and stored under `state["derived"]["normalized_timeline"]`.
+
+Supported normalizations:
+- Relative days: "today" → `2026-03-08`, "yesterday" → `2026-03-07`, "day before yesterday"
+- Bare weekdays: "Monday", "Tuesday" → most recent past occurrence (never same day)
+- "since <weekday>" expressions
+- "last week" → 7 days back
+- Durations: "3 days" → `P3D`, "2 weeks" → `P2W`, "5 hours" → `PT5H`, "3 months" → `P3M`
+
+Unrecognised expressions return `None` — no guessing.
+
+### Temporal Reasoner
+
+`derive_temporal_context()` produces clinical onset ordering and progression tracking from the normalized timeline. Only explicit temporal evidence is used — mention order alone never establishes onset.
+
+```python
+from app.temporal_reasoner import derive_temporal_context
+
+context = derive_temporal_context(clinical_state)
+```
+
+Automatically computed by `build_clinical_state()` and stored under `state["derived"]["temporal_context"]`.
+
+Returned structure:
+
+```python
+{
+    "clinical_onset_order": ["headache", "nausea"],   # ordered by ISO date evidence only
+    "progression_events": [{"symptom": "headache", "progression": "worsening"}],
+    "new_symptoms": ["nausea"],                        # strictly after earliest onset
+    "temporal_uncertainty": ["nausea: duration P3D — no calendar date"],
+}
+```
+
+**Key rule:** Do NOT infer clinical onset order from transcript mention order alone. Only ISO date strings establish ordering — durations produce uncertainty notes.
+
+### Red Flag Detector
+
+`detect_red_flags()` identifies high-risk clinical constellations from structured symptom data using deterministic rule-based matching.
+
+```python
+from app.red_flag_detector import detect_red_flags
+
+flags = detect_red_flags(clinical_state)
+```
+
+Automatically computed by `build_clinical_state()` and stored under `state["derived"]["red_flags"]`.
+
+**Built-in rules (5):**
+
+| Flag | Evidence Required | Severity |
+|------|------------------|----------|
+| `sudden_severe_headache` | headache + severity:severe + onset:sudden | critical |
+| `chest_pain_with_dyspnea` | chest pain + shortness of breath/dyspnea | critical |
+| `hemoptysis_flag` | hemoptysis/coughing up blood | high |
+| `suicidal_ideation_flag` | suicidal ideation/suicidal thoughts | critical |
+| `systemic_malignancy_pattern` | weight loss + fatigue + night sweats | high |
+
+Uses `derived.symptom_representations` for qualifier-linked matching. Additive only.
+
+### Classification Router
+
+Configurable classification system selector. Runs as an optional output controlled by `config.classification`.
+
+```yaml
+classification:
+  enabled: false
+  system: none   # none | icpc | icd10 | icd11
+```
+
+When enabled, stores result under `state["derived"]["classification"]`:
+
+```python
+{
+    "system": "ICPC",   # or "ICD-10"
+    "suggestions": [
+        {"code": "N01", "label": "Headache", "kind": "symptom", "evidence": ["headache"]}
+    ]
+}
+```
+
+**ICPC-2:** 105 curated symptom mappings in `resources/classification/icpc_symptoms.json`.
+
+**ICD-10:** ~95 symptom mappings + conservative pattern-level suggestions. Symptom-level codes are always emitted. Pattern-level codes (e.g. migraine G43.909) are only suggested when a matching clinical pattern has an explicit mapping in `resources/classification/icd10_patterns.json`.
+
+**ICD-11:** Placeholder — returns empty suggestions.
+
+Classification never modifies extraction results. It is an optional output layer only.
+
+### FHIR Exporter
+
+Deterministic FHIR Bundle export from structured clinical state. Produces interoperable healthcare resources without any external API calls.
+
+```yaml
+export:
+  fhir_enabled: false
+```
+
+When enabled, stores result under `state["derived"]["fhir_bundle"]`:
+
+```python
+{
+    "resourceType": "Bundle",
+    "type": "collection",
+    "entry": [
+        {"resource": {"resourceType": "Encounter", ...}},
+        {"resource": {"resourceType": "Observation", ...}},
+        {"resource": {"resourceType": "Condition", ...}},
+        {"resource": {"resourceType": "Composition", ...}},
+    ]
+}
+```
+
+**Resource types:**
+
+| Resource | Source Data |
+|----------|-----------|
+| Encounter | Session metadata, problem_summary as reasonCode |
+| Observation | One per symptom — SNOMED coding from ontology_concepts, qualifier components |
+| Condition | Core symptom from problem_representation, classification suggestions as notes |
+| Composition | Narrative sections: Chief Complaint, Clinical Summary, Red Flags, Classification |
+
+All resource IDs are deterministic (SHA-256 hash of content). Verification status is always `provisional` — the system never overclaims diagnoses. Classification suggestions appear as notes on Condition, not as coding.
+
+### Output Selector
+
+Centralized control of optional output layers. Each is independently controllable via config:
+
+```yaml
+ai:
+  enabled: false
+
+classification:
+  enabled: false
+  system: none
+
+export:
+  fhir_enabled: false
+```
+
+The deterministic core pipeline always runs regardless of optional settings. Optional outputs run in order: classification → FHIR export → AI overlay. All outputs are additive — they never modify extraction results.
+
+```python
+from app.output_selector import apply_optional_outputs, should_run_ai_overlay
+
+apply_optional_outputs(clinical_state, config)
+
+if should_run_ai_overlay(config):
+    # caller handles async LLM call
+    ...
+```
+
+Supports both plain dict configs and AppConfig dataclass configs.
+
+### AI Overlay (Optional)
+
+Optional AI-generated clinical text from structured state. Fully optional — if disabled, the system behaves exactly as before. LLM output is an overlay only — it never modifies or replaces deterministic extraction results.
+
+```yaml
+ai:
+  enabled: false
+  provider: openai
+  model: gpt-4.1-mini
+  temperature: 0.2
+```
+
+```bash
+python -m app.main --ai          # enable AI overlay
+python -m app.main --no-ai       # disable AI overlay
+```
+
+Prompts are loaded from files in the `prompts/` directory — never hardcoded. Failures are logged and swallowed; the deterministic pipeline is never interrupted.
+
+Overlay keys: `soap_draft`, `clinical_summary`, `follow_up_questions`, `problem_representation_refined`. Stored under `state["derived"]["ai_overlay"]` and `state["derived"]["ai_overlay_meta"]`.
 
 ### Session Export Bundle
 
@@ -1236,13 +1434,59 @@ output_dir: outputs
 
 ---
 
+## Synthetic Case Generator
+
+A modular synthetic audio/scenario generator for end-to-end testing and benchmarking of the SCRIBE pipeline. Completely separate from the runtime transcription flow.
+
+```bash
+# Generate all cases (clean audio):
+python -m tools.generate_synthetic_cases
+
+# Generate a specific case:
+python -m tools.generate_synthetic_cases --case chest_pain_consultation
+
+# Telephone simulation:
+python -m tools.generate_synthetic_cases --env telephone
+
+# List available scenarios:
+python -m tools.generate_synthetic_cases --list
+
+# Generate and play back:
+python -m tools.generate_synthetic_cases --case chest_pain_consultation --play
+```
+
+Each case generates:
+
+| File | Content |
+|------|---------|
+| `audio.wav` | 16 kHz mono 16-bit PCM (SCRIBE-ready) |
+| `transcript.txt` | Speaker-labeled reference transcript |
+| `ground_truth.json` | Expected clinical facts for benchmarking |
+| `meta.json` | Generation metadata (timestamps, config, segments) |
+
+**Starter scenarios (3):**
+
+| Case | Type | Theme | Turns |
+|------|------|-------|-------|
+| `chest_pain_consultation` | in_person | chest_pain | 15 |
+| `cough_fever_telephone` | telephone_triage | cough_fever | 13 |
+| `abdominal_pain_consultation` | in_person | abdominal_pain | 15 |
+
+**Audio environment modes:** `clean`, `telephone` (bandpass 300–3400 Hz), `noisy` (additive Gaussian), `distance_near`, `distance_far` (attenuation + low-pass). Per-speaker environment overrides supported (e.g. patient far from mic).
+
+Uses `pyttsx3` (Windows SAPI) for local offline TTS with male/female voices. Falls back to sine-tone placeholders if pyttsx3 is unavailable. All generation is deterministic given the same seed.
+
+See [`tools/synthetic_cases/README.md`](tools/synthetic_cases/README.md) for full documentation on extending scenarios, voices, and running SCRIBE on generated files.
+
+---
+
 ## Testing
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-1121 tests covering WAV export, normalizer (exact/fuzzy/phrase matching, domain priority, edge cases), diarization (DefaultDiarizer, factory, pyannote pipeline with mocks), diarized segment cleaning (dedup, merge, overlap resolution, min-duration filter), turn smoothing (short-turn merge, gap merge, timestamp monotonicity, input immutability), speaker merge (chain resolution, cycle detection, turn rewrite, adjacent merge), segment relabeling (overlap assignment, output formats), speaker tagging (auto-tags, manual set-tag/set-label, CLI parsing, tagged transcript generation), calibration (cosine similarity, embedding matching, cluster-level embeddings, cluster-to-profile assignment, diagnostics report, debug output, per-turn embedding extraction, robustness guards, partial assignment control, profile I/O, config parsing, pipeline integration), confidence report (threshold flagging, None metric handling, missing metrics detection, report structure, file I/O, low-confidence segment filtering), session resume (state validation, safety checks, counter resume, WAV concatenation, OutputWriter append/re-normalize, CLI parsing), session browser (scan/sort, companion file detection, corrupt JSONL skip, show-session detail, CLI parsing, speaker count extraction, clinical note detection, speaker role enrichment), overlap stabilization (overlap detection, prototype filtering, UNKNOWN fallback, freeze rule, many-to-one safeguard), feature flags (config parsing, flag toggle behavior, session report schema/write, audio precheck persistence), audio quality pre-check (silent/clipped/high-SNR/low-SNR audio, warnings, config parsing), subtitle export (SRT/VTT formatting, time clamping, edge cases, file I/O), session summary (Markdown rendering, section coverage, missing precheck handling, report immutability), standalone export (SRT/VTT/summary from saved artifacts, seg_id join, missing file handling), lexicon management (add/update/remove/list terms, validation, file creation, round-trip persistence), extractor vocabularies (JSON loading, missing/invalid file fallback, empty list handling, shipped file validation), clinical note export (template loading/validation, note building, scope filtering, soft scoping, transcript section, file writing, SOAP integration), symptom timeline (numeric/relative time extraction, deduplication, missing fields, clinical note rendering), diagnostic hints (rule matching, negation suppression, multiple rules, SNOMED codes, evidence sorting, clinical note rendering), clinical state (structure validation, extractor assembly, timeline inclusion, review flag forwarding, hint generation, role passthrough, derived problem representation, integration scenario), problem representation (core symptom selection, timeline-based ordering, qualifier population, duration fallback, associated symptoms, factor collection with core-first/fallback dedup, negatives passthrough, diagnostic hint names, determinism, AI overlay compatibility), symptom representations (per-symptom structure, qualifier isolation, no cross-symptom inheritance, per-symptom duration, per-symptom factors without fallback, case-insensitive matching, determinism, clinical state integration, AI overlay preservation), problem summary (single symptom fields, severity/duration/onset/pattern/progression/laterality/radiation, aggravating/relieving factors, field ordering, multiple symptoms with qualifier isolation, no cross-symptom attribute merging, missing core, determinism, capitalization, clinical state integration, structured data preservation, AI overlay compatibility), ontology mapper (file loading, default/custom/missing/invalid files, key lowercasing, shipped file coverage, symptom mapping, order preservation, case insensitivity, unknown symptom skip, duplicate dedup, empty inputs, default map auto-load, determinism, clinical state integration, AI overlay compatibility), pattern matcher (angina-like with factor variants, lower respiratory with dyspnea variant, migraine-like with optional severity, urinary irritative with term variants, gastroenteritis-like with optional fever, factor isolation across symptoms, severity isolation, empty/missing inputs, no duplicates, multiple co-occurring patterns, determinism, clinical state integration, AI overlay compatibility), review flags (medication/symptom/confidence rules, evidence linking, clinical note rendering), role detection (clinician/patient signal matching, multilingual patterns, profile hints, unknown fallback, confidence scoring), multi-note export (CSV parsing, deduplication, multi-template file generation, role computation caching, missing template handling), confidence surfacing (low-confidence filtering, custom thresholds, review flag pipeline integration), session export bundle (directory/ZIP creation, file discovery, simplified renaming, missing file handling, content preservation), batch reprocessing (session discovery, batch execution, failure continuation, corrupt/empty RAW handling, summary counts), config validation (schema checks, unknown keys, type mismatches, nested validation), and end-to-end integration (full pipeline without live microphone).
+1488 tests covering WAV export, normalizer, diarization, segment cleaning, turn smoothing, speaker merge, segment relabeling, speaker tagging, calibration, confidence report, session resume, session browser, overlap stabilization, feature flags, audio quality pre-check, subtitle export, session summary, standalone export, lexicon management, extractor vocabularies, clinical note export, symptom timeline, diagnostic hints, clinical state, problem representation, symptom representations, problem summary, ontology mapper, pattern matcher, review flags, role detection, multi-note export, session export bundle, batch reprocessing, config validation, qualifier extraction, history extraction, live summary, temporal normalizer, temporal reasoner, red flag detector, classification router (ICPC/ICD-10), FHIR exporter, output selector, LLM overlay compatibility, synthetic case generator (scenarios, audio environments, TTS engine, case generation, CLI), and end-to-end integration.
 
 ---
 

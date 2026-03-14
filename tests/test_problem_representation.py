@@ -7,6 +7,7 @@ import pytest
 from app.problem_representation import (
     build_problem_representation,
     build_symptom_representations,
+    build_problem_narrative,
 )
 from app.clinical_state import build_clinical_state
 
@@ -103,10 +104,21 @@ class TestQualifierPopulation:
         assert pr["onset"] == "sudden"
         assert pr["pattern"] == "constant"
 
+    def test_character_from_qualifiers(self):
+        pr = build_problem_representation(_state(
+            symptoms=["chest pain"],
+            qualifiers=[{
+                "symptom": "chest pain",
+                "qualifiers": {"character": "sharp"},
+            }],
+        ))
+        assert pr["character"] == "sharp"
+
     def test_qualifiers_missing(self):
         pr = build_problem_representation(_state(symptoms=["headache"]))
         assert pr["severity"] is None
         assert pr["onset"] is None
+        assert pr["character"] is None
         assert pr["pattern"] is None
         assert pr["progression"] is None
         assert pr["laterality"] is None
@@ -305,8 +317,8 @@ class TestDeterminism:
 
 
 _SYMPTOM_REP_KEYS = {
-    "symptom", "severity", "duration", "onset", "pattern",
-    "progression", "laterality", "radiation",
+    "symptom", "severity", "duration", "onset", "character",
+    "pattern", "progression", "laterality", "radiation",
     "aggravating_factors", "relieving_factors",
 }
 
@@ -387,6 +399,7 @@ class TestSymptomRepQualifiers:
         rep = reps[0]
         assert rep["severity"] is None
         assert rep["onset"] is None
+        assert rep["character"] is None
         assert rep["pattern"] is None
         assert rep["progression"] is None
         assert rep["laterality"] is None
@@ -619,3 +632,176 @@ class TestIntegration:
         # Each symptom has its own entry
         rep_syms = {r["symptom"] for r in reps}
         assert pr["core_symptom"] in rep_syms
+
+
+# ══════════════════════════════════════════════════════════════════
+# Problem narrative
+# ══════════════════════════════════════════════════════════════════
+
+
+def _narrative_state(**overrides) -> dict:
+    """State with derived fields for narrative testing."""
+    base = _state(**{k: v for k, v in overrides.items()
+                     if k not in ("derived",)})
+    derived = overrides.get("derived", {})
+    base["derived"] = {
+        "problem_focus": derived.get("problem_focus"),
+        "symptom_representations": derived.get("symptom_representations", []),
+        "structured_symptoms": derived.get("structured_symptoms", []),
+    }
+    return base
+
+
+class TestNarrativeEmpty:
+    def test_empty_state(self):
+        result = build_problem_narrative(_narrative_state())
+        assert result["positive_features"] == []
+        assert result["negative_features"] == []
+        assert result["narrative"] == ""
+
+    def test_no_core_symptom(self):
+        result = build_problem_narrative(_narrative_state(
+            derived={"problem_focus": None},
+        ))
+        assert result["positive_features"] == []
+        assert result["narrative"] == ""
+
+    def test_negations_only_no_core(self):
+        result = build_problem_narrative(_narrative_state(
+            negations=["No fever", "Denies chest pain"],
+            derived={"problem_focus": None},
+        ))
+        assert result["negative_features"] == ["No fever", "Denies chest pain"]
+        assert result["positive_features"] == []
+        assert "No fever" in result["narrative"]
+
+
+class TestNarrativePositiveFeatures:
+    def test_core_symptom_in_features(self):
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["headache"],
+            derived={
+                "problem_focus": "headache",
+                "symptom_representations": [
+                    {"symptom": "headache", "severity": None, "character": None,
+                     "duration": None, "onset": None, "pattern": None,
+                     "progression": None, "laterality": None, "radiation": None,
+                     "aggravating_factors": [], "relieving_factors": []},
+                ],
+            },
+        ))
+        assert "headache" in result["positive_features"]
+
+    def test_severity_in_features(self):
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["headache"],
+            derived={
+                "problem_focus": "headache",
+                "symptom_representations": [
+                    {"symptom": "headache", "severity": "severe", "character": None,
+                     "duration": None, "onset": None, "pattern": None,
+                     "progression": None, "laterality": None, "radiation": None,
+                     "aggravating_factors": [], "relieving_factors": []},
+                ],
+            },
+        ))
+        assert "severe" in result["positive_features"]
+
+    def test_full_qualifier_set(self):
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["chest pain"],
+            derived={
+                "problem_focus": "chest pain",
+                "symptom_representations": [
+                    {"symptom": "chest pain", "severity": "severe",
+                     "character": "sharp", "duration": "3 days",
+                     "onset": "sudden", "pattern": "intermittent",
+                     "progression": "worsening", "laterality": "left",
+                     "radiation": "to left arm",
+                     "aggravating_factors": ["exertion"],
+                     "relieving_factors": ["rest"]},
+                ],
+            },
+        ))
+        features = result["positive_features"]
+        assert "severe" in features
+        assert "sharp character" in features
+        assert "chest pain" in features
+        assert "for 3 days" in features
+        assert "sudden onset" in features
+        assert "intermittent" in features
+        assert "worsening" in features
+        assert "left side" in features
+        assert "radiating to left arm" in features
+        assert "worse with exertion" in features
+        assert "relieved by rest" in features
+
+
+class TestNarrativeNegativeFeatures:
+    def test_negations_passthrough(self):
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["headache"],
+            negations=["No fever", "Denies vomiting"],
+            derived={
+                "problem_focus": "headache",
+                "symptom_representations": [
+                    {"symptom": "headache", "severity": None, "character": None,
+                     "duration": None, "onset": None, "pattern": None,
+                     "progression": None, "laterality": None, "radiation": None,
+                     "aggravating_factors": [], "relieving_factors": []},
+                ],
+            },
+        ))
+        assert result["negative_features"] == ["No fever", "Denies vomiting"]
+
+
+class TestNarrativeText:
+    def test_well_formed_sentence(self):
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["headache"],
+            negations=["No fever"],
+            derived={
+                "problem_focus": "headache",
+                "symptom_representations": [
+                    {"symptom": "headache", "severity": "severe",
+                     "character": None, "duration": "3 days",
+                     "onset": "sudden", "pattern": None,
+                     "progression": None, "laterality": None,
+                     "radiation": None,
+                     "aggravating_factors": [], "relieving_factors": []},
+                ],
+            },
+        ))
+        narrative = result["narrative"]
+        assert narrative[0].isupper()
+        assert narrative.endswith(".")
+        assert "severe" in narrative.lower()
+        assert "headache" in narrative.lower()
+        assert "3 days" in narrative
+        assert "No fever" in narrative
+
+    def test_minimal_data(self):
+        """Just core symptom, no qualifiers."""
+        result = build_problem_narrative(_narrative_state(
+            symptoms=["headache"],
+            derived={
+                "problem_focus": "headache",
+                "symptom_representations": [
+                    {"symptom": "headache", "severity": None, "character": None,
+                     "duration": None, "onset": None, "pattern": None,
+                     "progression": None, "laterality": None, "radiation": None,
+                     "aggravating_factors": [], "relieving_factors": []},
+                ],
+            },
+        ))
+        assert "headache" in result["narrative"].lower()
+        assert result["narrative"].endswith(".")
+
+    def test_narrative_with_negatives_only(self):
+        result = build_problem_narrative(_narrative_state(
+            negations=["No fever", "Denies chest pain"],
+            derived={"problem_focus": None},
+        ))
+        narrative = result["narrative"]
+        assert "No fever" in narrative
+        assert "Denies chest pain" in narrative

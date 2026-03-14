@@ -28,7 +28,13 @@ from app.qualifier_extraction import extract_qualifiers
 from app.problem_representation import (
     build_problem_representation,
     build_symptom_representations,
+    build_problem_narrative,
 )
+from app.observation_layer import build_observation_layer
+from app.ice_extraction import extract_ice
+from app.intensity_extraction import extract_intensities
+from app.site_extraction import extract_sites
+from app.structured_symptom_model import build_structured_symptoms
 from app.problem_summary import summarize_problem
 from app.ontology_mapper import map_symptoms_to_concepts
 from app.pattern_matcher import match_clinical_patterns
@@ -37,6 +43,7 @@ from app.temporal_normalizer import normalize_timeline
 from app.temporal_reasoner import derive_temporal_context
 from app.red_flag_detector import detect_red_flags
 from app.output_selector import apply_optional_outputs
+from app.clinical_graph import build_clinical_graph
 
 
 def build_clinical_state(
@@ -94,6 +101,17 @@ def build_clinical_state(
         "qualifiers": qualifiers,
     }
 
+    # Layer 1: Observations (all occurrences, not just first)
+    state["observations"] = build_observation_layer(
+        segments, symptoms, negations, durations, medications,
+    )
+
+    # Layer 2 additions
+    state["ice"] = extract_ice(segments)
+    state["intensities"] = extract_intensities(segments)
+    state["sites"] = extract_sites(segments)
+
+    # Existing derived computations (unchanged order)
     pr = build_problem_representation(state)
     symptom_reps = build_symptom_representations(state)
     state["derived"] = {
@@ -110,6 +128,15 @@ def build_clinical_state(
     )
     state["derived"]["temporal_context"] = derive_temporal_context(state)
     state["derived"]["red_flags"] = detect_red_flags(state)
+
+    # Layer 3: Structured symptoms (after red_flags populated)
+    state["derived"]["structured_symptoms"] = build_structured_symptoms(state)
+
+    # Layer 4: Problem narrative
+    state["derived"]["problem_narrative"] = build_problem_narrative(state)
+
+    # Clinical graph — additive evidence-aware representation
+    state["clinical_graph"] = build_clinical_graph(state).to_dict()
 
     apply_optional_outputs(state, config)
 

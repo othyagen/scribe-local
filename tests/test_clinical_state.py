@@ -30,6 +30,11 @@ _EXPECTED_KEYS = {
     "history",
     "qualifiers",
     "derived",
+    "observations",
+    "ice",
+    "intensities",
+    "sites",
+    "clinical_graph",
 }
 
 
@@ -41,12 +46,13 @@ class TestStructure:
         state = build_clinical_state([_seg("hello.")])
         assert set(state.keys()) == _EXPECTED_KEYS
 
-    def test_all_values_are_lists_except_roles_history_derived(self):
+    def test_all_values_are_lists_except_roles_history_derived_ice(self):
         state = build_clinical_state([_seg("hello.")])
-        for key in _EXPECTED_KEYS - {"speaker_roles", "history", "derived"}:
+        for key in _EXPECTED_KEYS - {"speaker_roles", "history", "derived", "ice", "clinical_graph"}:
             assert isinstance(state[key], list), f"{key} should be a list"
         assert isinstance(state["history"], dict)
         assert isinstance(state["derived"], dict)
+        assert isinstance(state["ice"], dict)
 
     def test_qualifiers_is_list(self):
         state = build_clinical_state([_seg("hello.")])
@@ -201,3 +207,109 @@ class TestIntegration:
         assert isinstance(state["review_flags"], list)
         assert isinstance(state["diagnostic_hints"], list)
         assert state["speaker_roles"] == roles
+
+
+# ── 5-layer model ───────────────────────────────────────────────
+
+
+class TestFiveLayerModel:
+    def test_observations_is_list(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        assert isinstance(state["observations"], list)
+
+    def test_ice_is_dict_with_keys(self):
+        state = build_clinical_state([_seg("hello.")])
+        assert isinstance(state["ice"], dict)
+        assert set(state["ice"].keys()) == {"ideas", "concerns", "expectations"}
+
+    def test_intensities_is_list(self):
+        state = build_clinical_state([_seg("hello.")])
+        assert isinstance(state["intensities"], list)
+
+    def test_sites_is_list(self):
+        state = build_clinical_state([_seg("hello.")])
+        assert isinstance(state["sites"], list)
+
+    def test_structured_symptoms_in_derived(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        assert "structured_symptoms" in state["derived"]
+        assert isinstance(state["derived"]["structured_symptoms"], list)
+
+    def test_problem_narrative_in_derived(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        assert "problem_narrative" in state["derived"]
+        narrative = state["derived"]["problem_narrative"]
+        assert isinstance(narrative, dict)
+        assert "positive_features" in narrative
+        assert "negative_features" in narrative
+        assert "narrative" in narrative
+
+    def test_clinical_graph_present(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        assert "clinical_graph" in state
+        cg = state["clinical_graph"]
+        assert isinstance(cg, dict)
+        assert "nodes" in cg
+        assert "edges" in cg
+        assert isinstance(cg["nodes"], list)
+        assert isinstance(cg["edges"], list)
+
+    def test_clinical_graph_has_symptom_node(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        nodes = state["clinical_graph"]["nodes"]
+        symptom_nodes = [n for n in nodes if n["node_type"] == "symptom"]
+        assert len(symptom_nodes) >= 1
+        assert any(n["value"] == "headache" for n in symptom_nodes)
+
+    def test_clinical_graph_empty_for_no_symptoms(self):
+        state = build_clinical_state([_seg("hello.")])
+        cg = state["clinical_graph"]
+        assert cg["nodes"] == []
+        assert cg["edges"] == []
+
+    def test_backward_compatibility(self):
+        """All existing keys still present and unchanged."""
+        state = build_clinical_state([_seg("patient has headache.")])
+        existing_keys = {
+            "symptoms", "durations", "negations", "medications",
+            "timeline", "review_flags", "diagnostic_hints",
+            "speaker_roles", "history", "qualifiers", "derived",
+        }
+        assert existing_keys.issubset(set(state.keys()))
+        derived_existing = {
+            "problem_representation", "problem_focus",
+            "symptom_representations", "problem_summary",
+            "ontology_concepts", "clinical_patterns",
+        }
+        assert derived_existing.issubset(set(state["derived"].keys()))
+
+    def test_full_scenario_all_layers(self):
+        """A realistic scenario produces coherent 5-layer output."""
+        segments = [
+            _seg("patient reports severe headache for 3 days.",
+                 seg_id="seg_0001", t0=0.0, t1=3.0),
+            _seg("also has nausea. denies fever.",
+                 seg_id="seg_0002", t0=3.0, t1=5.0),
+            _seg("prescribed ibuprofen 400 mg.",
+                 seg_id="seg_0003", t0=5.0, t1=8.0),
+        ]
+        state = build_clinical_state(segments)
+
+        # Layer 1: observations
+        assert len(state["observations"]) >= 1
+
+        # Layer 2: extractors
+        assert isinstance(state["ice"], dict)
+        assert isinstance(state["intensities"], list)
+        assert isinstance(state["sites"], list)
+
+        # Layer 3: structured symptoms
+        ss = state["derived"]["structured_symptoms"]
+        assert isinstance(ss, list)
+        assert len(ss) >= 1
+
+        # Layer 4: problem narrative
+        pn = state["derived"]["problem_narrative"]
+        assert isinstance(pn["positive_features"], list)
+        assert isinstance(pn["negative_features"], list)
+        assert isinstance(pn["narrative"], str)

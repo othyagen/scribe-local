@@ -336,9 +336,10 @@ class TestSymptomBuilderQualifierEdges:
         assert len(chars) == 1
         assert chars[0].value == "sharp"
 
-        # Edge from symptom to character
-        sym_node = g.get_nodes_by_type(NodeType.SYMPTOM)[0]
-        edges = g.get_edges_from(sym_node.node_id)
+        # Edge from instance to character (not from concept)
+        inst_nodes = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)
+        assert len(inst_nodes) == 1
+        edges = g.get_edges_from(inst_nodes[0].node_id)
         char_edges = [e for e in edges if e.edge_type == EdgeType.HAS_CHARACTER]
         assert len(char_edges) == 1
         assert char_edges[0].target_id == chars[0].node_id
@@ -407,8 +408,8 @@ class TestSymptomBuilderQualifierEdges:
         assert len(agg) == 2
         assert len(rel) == 1
 
-        sym_node = g.get_nodes_by_type(NodeType.SYMPTOM)[0]
-        edges = g.get_edges_from(sym_node.node_id)
+        inst_node = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        edges = g.get_edges_from(inst_node.node_id)
         agg_edges = [e for e in edges if e.edge_type == EdgeType.AGGRAVATED_BY]
         rel_edges = [e for e in edges if e.edge_type == EdgeType.RELIEVED_BY]
         assert len(agg_edges) == 2
@@ -599,3 +600,244 @@ class TestDeterminism:
         g1 = build_clinical_graph(state)
         g2 = build_clinical_graph(state)
         assert g1.to_dict() == g2.to_dict()
+
+
+# ══════════════════════════════════════════════════════════════════
+# Symptom instance nodes
+# ══════════════════════════════════════════════════════════════════
+
+
+def _ss(symptom: str, **overrides) -> dict:
+    """Helper to build a structured_symptom entry with sane defaults."""
+    base = {
+        "symptom": symptom,
+        "spatial": {"site": None, "laterality": None, "radiation": None},
+        "qualitative": {"character": None, "intensity": None,
+                        "intensity_raw": None, "severity": None},
+        "temporal": {"onset": None, "onset_type": None,
+                     "duration": None, "pattern": None, "progression": None},
+        "modifiers": {"aggravating_factors": [], "relieving_factors": []},
+        "context": {"associated_present": [], "associated_absent": [],
+                    "prior_episodes": []},
+        "safety": {"red_flags_present": [], "red_flags_absent": []},
+        "patient_perspective": {"ideas": [], "concerns": [],
+                                "expectations": []},
+        "observation_ids": [],
+    }
+    for k, v in overrides.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            base[k] = {**base[k], **v}
+        else:
+            base[k] = v
+    return base
+
+
+class TestSymptomInstanceNodes:
+    def test_instance_node_created(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [_ss("headache")],
+            },
+        ))
+        instances = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)
+        assert len(instances) == 1
+        assert instances[0].value == "headache"
+
+    def test_instance_of_edge(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [_ss("headache")],
+            },
+        ))
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        concept = g.get_nodes_by_type(NodeType.SYMPTOM)[0]
+        edges = g.get_edges_from(inst.node_id)
+        iof = [e for e in edges if e.edge_type == EdgeType.INSTANCE_OF]
+        assert len(iof) == 1
+        assert iof[0].target_id == concept.node_id
+
+    def test_instance_evidence_obs_ids(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            observations=[
+                _obs("symptom", "headache", "seg_0001", obs_id="obs_0001"),
+            ],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", observation_ids=["obs_0001"]),
+                ],
+            },
+        ))
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        assert "obs_0001" in inst.evidence_obs_ids
+
+    def test_qualifier_edges_from_instance_not_concept(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", qualitative={"character": "throbbing"}),
+                ],
+            },
+        ))
+        concept = g.get_nodes_by_type(NodeType.SYMPTOM)[0]
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        # No qualifier edges from concept node
+        concept_edges = g.get_edges_from(concept.node_id)
+        assert not any(e.edge_type == EdgeType.HAS_CHARACTER for e in concept_edges)
+        # Qualifier edge from instance
+        inst_edges = g.get_edges_from(inst.node_id)
+        char_edges = [e for e in inst_edges if e.edge_type == EdgeType.HAS_CHARACTER]
+        assert len(char_edges) == 1
+
+    def test_no_instance_without_structured_symptoms(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [],
+            },
+        ))
+        assert g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE) == []
+        assert g.get_nodes_by_type(NodeType.SYMPTOM) != []
+
+    def test_severity_node_and_edge(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", qualitative={"severity": "severe"}),
+                ],
+            },
+        ))
+        sevs = g.get_nodes_by_type(NodeType.SEVERITY)
+        assert len(sevs) == 1
+        assert sevs[0].value == "severe"
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        sev_edges = [e for e in g.get_edges_from(inst.node_id)
+                     if e.edge_type == EdgeType.HAS_SEVERITY]
+        assert len(sev_edges) == 1
+        assert sev_edges[0].target_id == sevs[0].node_id
+
+    def test_intensity_node_and_edge(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", qualitative={
+                        "intensity": 7, "intensity_raw": "7 out of 10",
+                    }),
+                ],
+            },
+        ))
+        ints = g.get_nodes_by_type(NodeType.INTENSITY)
+        assert len(ints) == 1
+        assert ints[0].value == "7"
+        assert ints[0].attributes.get("raw_text") == "7 out of 10"
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        int_edges = [e for e in g.get_edges_from(inst.node_id)
+                     if e.edge_type == EdgeType.HAS_INTENSITY]
+        assert len(int_edges) == 1
+
+    def test_duration_node_and_edge(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", temporal={"duration": "3 days"}),
+                ],
+            },
+        ))
+        durs = g.get_nodes_by_type(NodeType.DURATION)
+        assert len(durs) == 1
+        assert durs[0].value == "3 days"
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        dur_edges = [e for e in g.get_edges_from(inst.node_id)
+                     if e.edge_type == EdgeType.HAS_DURATION]
+        assert len(dur_edges) == 1
+
+    def test_radiation_node_and_edge(self):
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["chest pain"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("chest pain", spatial={"radiation": "left arm"}),
+                ],
+            },
+        ))
+        rads = g.get_nodes_by_type(NodeType.RADIATION)
+        assert len(rads) == 1
+        assert rads[0].value == "left arm"
+        inst = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)[0]
+        rad_edges = [e for e in g.get_edges_from(inst.node_id)
+                     if e.edge_type == EdgeType.HAS_RADIATION]
+        assert len(rad_edges) == 1
+
+    def test_determinism_with_instances(self):
+        state = _minimal_state(
+            symptoms=["headache", "nausea"],
+            observations=[
+                _obs("symptom", "headache", "seg_0001", obs_id="obs_0001"),
+                _obs("symptom", "nausea", "seg_0001", obs_id="obs_0002"),
+            ],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache", qualitative={"character": "throbbing"}),
+                    _ss("nausea"),
+                ],
+            },
+        )
+        g1 = build_clinical_graph(state)
+        g2 = build_clinical_graph(state)
+        assert g1.to_dict() == g2.to_dict()
+
+    def test_instance_ids_follow_structured_order(self):
+        """Instance IDs are deterministic from structured_symptoms ordering."""
+        g = ClinicalGraph()
+        build_symptom_graph(g, _minimal_state(
+            symptoms=["headache", "nausea"],
+            derived={
+                "red_flags": [],
+                "symptom_representations": [],
+                "structured_symptoms": [
+                    _ss("headache"),
+                    _ss("nausea"),
+                ],
+            },
+        ))
+        instances = g.get_nodes_by_type(NodeType.SYMPTOM_INSTANCE)
+        assert len(instances) == 2
+        assert instances[0].node_id == "inst_0001"
+        assert instances[0].value == "headache"
+        assert instances[1].node_id == "inst_0002"
+        assert instances[1].value == "nausea"

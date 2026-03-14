@@ -16,6 +16,11 @@ class NodeType:
     ASSOCIATED_SYMPTOM = "associated_symptom"
     NEGATED_SYMPTOM = "negated_symptom"
     ICE_ITEM = "ice_item"
+    SYMPTOM_INSTANCE = "symptom_instance"
+    SEVERITY = "severity"
+    INTENSITY = "intensity"
+    DURATION = "duration"
+    RADIATION = "radiation"
 
 
 class EdgeType:
@@ -31,3 +36,8 @@ class EdgeType:
     ASSOCIATED_WITH = "ASSOCIATED_WITH"
     NEGATED_BY = "NEGATED_BY"
     EXPRESSED_AS = "EXPRESSED_AS"
+    INSTANCE_OF = "INSTANCE_OF"
+    HAS_INTENSITY = "HAS_INTENSITY"
+    HAS_SEVERITY = "HAS_SEVERITY"
+    HAS_DURATION = "HAS_DURATION"
+    HAS_RADIATION = "HAS_RADIATION"

@@ -166,50 +166,76 @@ No free rewriting. No invented facts. No paraphrasing.
 
 ## Architecture
 
+SCRIBE is a staged, forward-only pipeline. Later stages read from earlier stages but never mutate their outputs. The structured clinical state (`build_clinical_state()`) is the source of truth — clinical notes, FHIR bundles, and other exports are projections.
+
+For the full pipeline specification (stage contracts, immutability rules, module ownership, execution order), see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ```
-Microphone → Audio Capture → VAD → Diarization → ASR → Commit → Normalize → Output
-               (sounddevice)  (RMS)  (speaker_id)  (whisper)  (immutable)  (lexicon)
+Source → Transcription → Normalized → Observation → Feature → Graph → Structured → Reasoning → Render/Export
+  S1         S2              S3           S4           S5       S6        S7           S8           S9
 ```
 
-Each layer has a single responsibility:
+```
+S1-S3: Input pipeline    — audio capture, ASR, lexicon normalization
+S4-S8: Clinical pipeline  — deterministic extraction, structuring, reasoning
+S9:    Export pipeline     — projections of clinical state into output formats
+```
 
-| Module | Responsibility |
-|--------|---------------|
-| `audio.py` | Capture microphone audio via sounddevice |
-| `vad.py` | RMS-based voice activity detection |
-| `diarization.py` | Speaker identification (metadata only, never modifies text) |
-| `asr.py` | Speech-to-text using faster-whisper |
-| `commit.py` | Create immutable RAW segments with IDs and timestamps |
-| `normalize.py` | Apply lexicon corrections with audit logging |
-| `io.py` | Write all output files |
-| `config.py` | Configuration loading and CLI argument parsing |
-| `tagging.py` | Speaker tag/label assignment and tagged transcript generation |
-| `lexicon_manager.py` | CLI lexicon management (add, remove, list custom terms) |
-| `extractors.py` | Deterministic symptom/medication/negation/duration extraction |
-| `extractor_vocab.py` | Load extractor vocabularies from external JSON files |
-| `export_clinical_note.py` | Template-driven clinical note generation |
-| `symptom_timeline.py` | Symptom–time expression pairing per segment |
-| `diagnostic_hints.py` | Rule-based diagnostic suggestions with SNOMED codes |
-| `clinical_state.py` | Structured clinical state assembly from all extraction modules |
-| `problem_representation.py` | Deterministic structured problem representation from clinical state |
-| `problem_summary.py` | Deterministic human-readable problem summary from core symptom |
-| `ontology_mapper.py` | Lightweight file-based symptom-to-SNOMED concept mapping (143 SNOMED CT entries) |
-| `pattern_matcher.py` | Deterministic rule-based clinical pattern detection |
-| `live_summary.py` | Running clinical summary aggregation for live display |
-| `qualifier_extraction.py` | Per-symptom qualifier extraction (severity, onset, pattern, etc.) |
-| `history_extraction.py` | Patient history/context extraction from transcript |
-| `temporal_normalizer.py` | ISO date/duration normalization of time expressions |
-| `temporal_reasoner.py` | Clinical onset ordering, progression tracking, temporal uncertainty |
-| `red_flag_detector.py` | High-risk clinical constellation detection |
-| `classification_router.py` | Configurable classification system selector (ICPC / ICD-10) |
-| `icpc_mapper.py` | ICPC-2 code suggestion from symptoms (105 curated mappings) |
-| `icd_mapper.py` | ICD-10 code suggestion with symptom + pattern level mapping |
-| `fhir_exporter.py` | Deterministic FHIR Bundle export (Encounter, Observation, Condition, Composition) |
-| `output_selector.py` | Centralized control of optional outputs (classification, FHIR, AI overlay) |
-| `llm_overlay.py` | Optional AI-generated clinical text overlay (provider-abstracted) |
-| `export_bundle.py` | Session artifact bundling (directory or ZIP export) |
-| `role_detection.py` | Deterministic speaker role classification (clinician/patient) |
-| `main.py` | Pipeline orchestration |
+Each module has a single responsibility:
+
+| Stage | Module | Responsibility |
+|-------|--------|---------------|
+| S1 | `audio.py` | Capture microphone audio via sounddevice |
+| S1 | `audio_quality.py` | Pre-session audio quality check (SNR, clipping, level) |
+| S1 | `vad.py` | RMS-based voice activity detection |
+| S1 | `diarization.py` | Speaker identification, smoothing, merge, relabeling |
+| S1 | `calibration.py` | Speaker profile embedding extraction and matching |
+| S2 | `asr.py` | Speech-to-text using faster-whisper |
+| S2 | `commit.py` | Create immutable RAW segments with IDs and timestamps |
+| S2 | `confidence.py` | Per-segment ASR quality metrics |
+| S3 | `normalize.py` | Apply lexicon corrections with audit logging |
+| S3 | `io.py` | Write normalized JSON, change log, transcript files |
+| S3 | `lexicon_manager.py` | CLI lexicon management (add, remove, list custom terms) |
+| S4 | `observation_layer.py` | Source-level evidence records (all occurrences per segment) |
+| S5 | `extractors.py` | Deterministic symptom/medication/negation/duration extraction |
+| S5 | `extractor_vocab.py` | Load extractor vocabularies from external JSON files |
+| S5 | `symptom_timeline.py` | Symptom-time expression pairing per segment |
+| S5 | `qualifier_extraction.py` | Per-symptom qualifier extraction (severity, onset, pattern, etc.) |
+| S5 | `history_extraction.py` | Patient history/context extraction from transcript |
+| S5 | `ice_extraction.py` | Ideas, Concerns, Expectations extraction (conservative) |
+| S5 | `intensity_extraction.py` | Numeric pain intensity (X/10 scale) |
+| S5 | `site_extraction.py` | Anatomical site mentions per segment |
+| S5 | `role_detection.py` | Deterministic speaker role classification (clinician/patient) |
+| S5 | `review_flags.py` | Quality and safety flag generation |
+| S6 | `clinical_graph.py` | Graph orchestration |
+| S6 | `graph/` | ClinicalGraph container, Node/Edge models, type constants |
+| S6 | `graph/symptom_builder.py` | Symptom-domain graph population |
+| S7 | `structured_symptom_model.py` | Per-symptom structured model (spatial/temporal/qualitative/context) |
+| S8 | `problem_representation.py` | Core symptom identification, problem narrative |
+| S8 | `problem_summary.py` | Deterministic human-readable problem summary |
+| S8 | `diagnostic_hints.py` | Rule-based diagnostic suggestions with SNOMED codes |
+| S8 | `ontology_mapper.py` | Symptom-to-SNOMED concept mapping (143 entries) |
+| S8 | `pattern_matcher.py` | Deterministic rule-based clinical pattern detection |
+| S8 | `red_flag_detector.py` | High-risk clinical constellation detection |
+| S8 | `temporal_normalizer.py` | ISO date/duration normalization of time expressions |
+| S8 | `temporal_reasoner.py` | Clinical onset ordering, progression tracking |
+| S8 | `live_summary.py` | Running clinical summary aggregation for live display |
+| S8 | `classification_router.py` | Configurable classification system selector (ICPC / ICD-10) |
+| S8 | `icpc_mapper.py` | ICPC-2 code suggestion from symptoms (105 curated mappings) |
+| S8 | `icd_mapper.py` | ICD-10 code suggestion with symptom + pattern level mapping |
+| S8 | `llm_overlay.py` | Optional AI-generated clinical text overlay (provider-abstracted) |
+| S9 | `export_clinical_note.py` | Template-driven clinical note generation |
+| S9 | `export_subtitles.py` | SRT / WebVTT subtitle export |
+| S9 | `export_summary.py` | Session summary Markdown |
+| S9 | `export_bundle.py` | Session artifact bundling (directory or ZIP export) |
+| S9 | `fhir_exporter.py` | Deterministic FHIR Bundle export |
+| S9 | `output_selector.py` | Centralized control of optional outputs |
+| S9 | `reporting.py` | Session report JSON |
+| — | `clinical_state.py` | Pipeline orchestrator (calls S4-S8 in order) |
+| — | `config.py` | Configuration loading and CLI argument parsing |
+| — | `tagging.py` | Speaker tag/label assignment |
+| — | `session_browser.py` | Read-only session listing and inspection |
+| — | `main.py` | CLI entry point and session orchestration |
 
 ### Speaker Diarization
 

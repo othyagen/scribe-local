@@ -1,12 +1,13 @@
-"""Structured clinical state — assembles all deterministic pipeline outputs.
+"""Structured clinical state — pipeline orchestrator (S4-S8).
 
-Orchestrates existing extractor, review-flag, timeline, and diagnostic-hint
-modules into a single dictionary.  No new extraction logic — this module
+Calls extraction, observation, structuring, reasoning, and graph modules
+in a fixed forward-only order.  No new extraction logic — this module
 only calls and collects.
 
-The returned structure is designed to be easily extensible with future
-fields (problem_representation, objective_findings, labs, etc.) without
-breaking existing consumers.
+Invariants (see docs/ARCHITECTURE.md):
+  - Later stages never mutate earlier-stage outputs.
+  - The returned dict is the source of truth; exports are projections.
+  - Same input produces same output (deterministic).
 """
 
 from __future__ import annotations

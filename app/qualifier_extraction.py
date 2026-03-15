@@ -1,8 +1,8 @@
 """Semantic qualifier extraction — deterministic clinical qualifier detection.
 
-Extracts clinical qualifiers (severity, onset, pattern, progression,
-laterality, radiation, aggravating/relieving factors) from transcript
-segments and links them to nearby symptom mentions.
+Extracts clinical qualifiers (severity, onset, character, pattern,
+progression, laterality, radiation, aggravating/relieving factors)
+from transcript segments and links them to nearby symptom mentions.
 
 No ML, no LLM — regex + keyword matching only.
 """
@@ -37,6 +37,28 @@ _ONSET_TERMS: dict[str, str] = {
     "abrupt": "sudden",
     "abruptly": "sudden",
     "insidious": "gradual",
+}
+
+_CHARACTER_TERMS: dict[str, str] = {
+    "cramping": "cramping",
+    "burning": "burning",
+    "stabbing": "stabbing",
+    "dull": "dull",
+    "pressure-like": "pressure-like",
+    "pressure": "pressure-like",
+    "sharp": "sharp",
+    "aching": "aching",
+    "throbbing": "throbbing",
+    "squeezing": "squeezing",
+    "tearing": "tearing",
+    "colicky": "colicky",
+    "gnawing": "gnawing",
+    "productive": "productive",
+    "dry": "dry",
+    "shooting": "shooting",
+    "tingling": "tingling",
+    "pounding": "throbbing",
+    "stinging": "stinging",
 }
 
 _PATTERN_TERMS: dict[str, str] = {
@@ -86,6 +108,7 @@ def _build_vocab_pattern(terms: dict[str, str]) -> re.Pattern[str]:
 
 _SEVERITY_PAT = _build_vocab_pattern(_SEVERITY_TERMS)
 _ONSET_PAT = _build_vocab_pattern(_ONSET_TERMS)
+_CHARACTER_PAT = _build_vocab_pattern(_CHARACTER_TERMS)
 _PATTERN_PAT = _build_vocab_pattern(_PATTERN_TERMS)
 _PROGRESSION_PAT = _build_vocab_pattern(_PROGRESSION_TERMS)
 _LATERALITY_PAT = _build_vocab_pattern(_LATERALITY_TERMS)
@@ -106,15 +129,24 @@ _FACTOR_STOP = r"(?:\b(?:and|or|but|worse|better|relieved|aggravated|exacerbated
 
 _AGGRAVATING_PAT = re.compile(
     r"\b(?:worse\s+with|worsened\s+by|aggravated\s+by|triggered\s+by|"
-    r"exacerbated\s+by|increases?\s+with|provoked\s+by)\s+"
-    r"([a-z]+(?:\s+(?!" + _FACTOR_STOP + r")[a-z]+){0,2})",
+    r"exacerbated\s+by|increases?\s+with|provoked\s+by|"
+    r"gets?\s+worse\s+when|worse\s+when|worse\s+if|"
+    r"worse\s+after|worsened\s+after)\s+"
+    r"([a-z]+(?:\s+(?!" + _FACTOR_STOP + r")[a-z]+){0,4})",
     re.IGNORECASE,
 )
 
 _RELIEVING_PAT = re.compile(
     r"\b(?:relieved\s+by|better\s+with|improved\s+by|eased\s+by|"
-    r"helped\s+by|decreases?\s+with|alleviated\s+by)\s+"
-    r"([a-z]+(?:\s+(?!" + _FACTOR_STOP + r")[a-z]+){0,2})",
+    r"helped\s+by|decreases?\s+with|alleviated\s+by|"
+    r"gets?\s+better\s+when|better\s+when|better\s+if)\s+"
+    r"([a-z]+(?:\s+(?!" + _FACTOR_STOP + r")[a-z]+){0,4})",
+    re.IGNORECASE,
+)
+
+# Leading subject pronouns to strip from captured factor text
+_LEADING_PRONOUN_PAT = re.compile(
+    r"^(?:I|you|he|she|it|we|they|my|your|his|her|its|our|their)\s+",
     re.IGNORECASE,
 )
 
@@ -133,7 +165,7 @@ _SYMPTOM_PATS: list[tuple[re.Pattern[str], str]] = [
 
 # ── token proximity ────────────────────────────────────────────────
 
-_TOKEN_WINDOW = 8
+_TOKEN_WINDOW = 15
 
 
 def _char_distance(symptom_match: re.Match, qualifier_match: re.Match) -> int:
@@ -237,6 +269,7 @@ def _extract_segment_qualifiers(
     _SINGLE_QUALS: list[tuple[re.Pattern, dict[str, str], str, bool]] = [
         (_SEVERITY_PAT, _SEVERITY_TERMS, "severity", True),
         (_ONSET_PAT, _ONSET_TERMS, "onset", True),
+        (_CHARACTER_PAT, _CHARACTER_TERMS, "character", True),
         (_PATTERN_PAT, _PATTERN_TERMS, "pattern", True),
         (_PROGRESSION_PAT, _PROGRESSION_TERMS, "progression", True),
         (_LATERALITY_PAT, _LATERALITY_TERMS, "laterality", True),
@@ -269,6 +302,7 @@ def _extract_segment_qualifiers(
             continue
         _, kw = nearest
         value = m.group(1).strip().rstrip(".,;!?")
+        value = _LEADING_PRONOUN_PAT.sub("", value).strip()
         if value:
             qual_map[kw].setdefault("aggravating_factors", [])
             if value.lower() not in {v.lower() for v in qual_map[kw]["aggravating_factors"]}:
@@ -281,6 +315,7 @@ def _extract_segment_qualifiers(
             continue
         _, kw = nearest
         value = m.group(1).strip().rstrip(".,;!?")
+        value = _LEADING_PRONOUN_PAT.sub("", value).strip()
         if value:
             qual_map[kw].setdefault("relieving_factors", [])
             if value.lower() not in {v.lower() for v in qual_map[kw]["relieving_factors"]}:
@@ -294,6 +329,80 @@ def _extract_segment_qualifiers(
             })
 
     return results
+
+
+# ── question detection ─────────────────────────────────────────────
+
+def _is_question(text: str) -> bool:
+    """Return True if the segment looks like a question (doctor asking)."""
+    return text.rstrip().endswith("?")
+
+
+# ── context-aware segment merging ─────────────────────────────────
+
+_CONTEXT_WINDOW = 3  # look back this many segments for symptom context
+
+
+def _build_context_segments(
+    segments: list[dict],
+    known: set[str],
+) -> list[dict]:
+    """Build context-enriched segments for cross-segment qualifier linking.
+
+    For each segment that contains qualifier terms but no known symptom,
+    prepend the most recently mentioned symptom from prior segments
+    (within a window) as a synthetic prefix.  This lets the per-segment
+    extractor link qualifiers to symptoms mentioned earlier.
+
+    Returns a new list — original segments are not mutated.
+    """
+    # Track which symptom was last seen per segment index
+    recent_symptom: str | None = None
+    recent_symptom_idx: int = -1
+    result: list[dict] = []
+
+    for i, seg in enumerate(segments):
+        text = seg.get("normalized_text", "")
+        if not text:
+            result.append(seg)
+            continue
+
+        text_lower = text.lower()
+
+        # Check if this segment mentions a known symptom
+        found_symptom: str | None = None
+        for pat, kw in _SYMPTOM_PATS:
+            if kw in known and pat.search(text):
+                # Prefer multi-word symptoms over single-word
+                if found_symptom is None or len(kw) > len(found_symptom):
+                    found_symptom = kw
+
+        if found_symptom is not None:
+            recent_symptom = found_symptom
+            recent_symptom_idx = i
+            result.append(seg)
+            continue
+
+        # No symptom in this segment — check if it has qualifier terms
+        has_qualifier = any(
+            p.search(text)
+            for p in (
+                _SEVERITY_PAT, _ONSET_PAT, _CHARACTER_PAT,
+                _PATTERN_PAT, _PROGRESSION_PAT, _LATERALITY_PAT,
+                _RADIATION_PAT, _AGGRAVATING_PAT, _RELIEVING_PAT,
+            )
+        )
+
+        if has_qualifier and recent_symptom is not None \
+                and (i - recent_symptom_idx) <= _CONTEXT_WINDOW:
+            # Prepend the recent symptom so the extractor can link
+            enriched = dict(seg)
+            enriched["normalized_text"] = recent_symptom + ". " + text
+            result.append(enriched)
+        else:
+            result.append(seg)
+
+    return result
 
 
 # ── public API ─────────────────────────────────────────────────────
@@ -332,19 +441,81 @@ def extract_qualifiers(
     if not known:
         return []
 
-    # Collect qualifiers per segment, first occurrence wins
-    seen: set[str] = set()
-    results: list[dict] = []
+    # Filter out question segments (e.g. doctor asking about qualifiers)
+    # before context building so they don't pollute symptom tracking or
+    # inflate segment distance
+    non_question = [
+        seg for seg in segments
+        if not _is_question(seg.get("normalized_text", ""))
+    ]
 
-    for seg in segments:
+    # Build context-enriched segments for cross-segment linking
+    enriched = _build_context_segments(non_question, known)
+
+    # Collect qualifiers per segment, merging across segments per symptom
+    merged: dict[str, dict] = {}  # symptom_key → qualifiers dict
+    order: list[str] = []  # preserve first-seen order
+
+    for seg in enriched:
         text = seg.get("normalized_text", "")
         if not text:
             continue
 
         for entry in _extract_segment_qualifiers(text, known):
             symptom_key = entry["symptom"].lower()
-            if symptom_key not in seen:
-                seen.add(symptom_key)
-                results.append(entry)
+            if symptom_key not in merged:
+                merged[symptom_key] = {}
+                order.append(symptom_key)
+
+            existing = merged[symptom_key]
+            for key, value in entry["qualifiers"].items():
+                if key in ("aggravating_factors", "relieving_factors"):
+                    existing.setdefault(key, [])
+                    for v in value:
+                        if v.lower() not in {e.lower() for e in existing[key]}:
+                            existing[key].append(v)
+                elif key not in existing:
+                    # First-segment wins for scalar qualifiers
+                    existing[key] = value
+
+    # Consolidate sub-symptom qualifiers into multi-word parent symptoms.
+    # E.g. if "abdominal pain" and "pain" both have qualifiers, merge
+    # "pain"'s qualifiers into "abdominal pain" (since the patient is
+    # talking about the same thing) and drop the standalone "pain" entry.
+    consumed: set[str] = set()
+    for parent_key in order:
+        for child_key in order:
+            if child_key == parent_key or child_key in consumed:
+                continue
+            # Check if child is a sub-word of parent (e.g. "pain" in "abdominal pain")
+            if child_key in parent_key and len(parent_key) > len(child_key):
+                # Merge child qualifiers into parent
+                parent_quals = merged[parent_key]
+                child_quals = merged[child_key]
+                for key, value in child_quals.items():
+                    if key in ("aggravating_factors", "relieving_factors"):
+                        parent_quals.setdefault(key, [])
+                        for v in value:
+                            if v.lower() not in {e.lower() for e in parent_quals[key]}:
+                                parent_quals[key].append(v)
+                    elif key not in parent_quals:
+                        parent_quals[key] = value
+                consumed.add(child_key)
+
+    results: list[dict] = []
+    for symptom_key in order:
+        if symptom_key in consumed:
+            continue
+        if merged[symptom_key]:
+            # Find the original-cased symptom name from SYMPTOM_PATS
+            symptom_name = symptom_key
+            for _, kw in _SYMPTOM_PATS:
+                if kw.lower() == symptom_key:
+                    symptom_name = kw
+                    break
+            results.append({
+                "symptom": symptom_name,
+                "qualifiers": merged[symptom_key],
+            })
 
     return results

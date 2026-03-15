@@ -50,6 +50,7 @@ def _register(case_id: str, scenario: dict) -> None:
 _register("chest_pain_consultation", {
     "encounter_type": "in_person_consultation",
     "theme": "chest_pain",
+    "language": "en",
     "participants": [_doctor("spk_0"), _patient("spk_1")],
     "dialogue": [
         {"speaker_id": "spk_0", "text": "Good morning. What brings you in today?"},
@@ -78,11 +79,12 @@ _register("chest_pain_consultation", {
                 "symptom": "chest pain",
                 "severity": None,
                 "onset": None,
-                "pattern": "dull pressure",
+                "character": "dull",
+                "pattern": None,
                 "progression": None,
                 "laterality": None,
                 "radiation": None,
-                "aggravating_factors": ["exertion", "walking up stairs"],
+                "aggravating_factors": ["walk up stairs"],
                 "relieving_factors": ["rest"],
             },
         ],
@@ -101,6 +103,7 @@ _register("chest_pain_consultation", {
 _register("cough_fever_telephone", {
     "encounter_type": "telephone_triage",
     "theme": "cough_fever",
+    "language": "en",
     "participants": [_doctor("spk_0"), _patient("spk_1")],
     "dialogue": [
         {"speaker_id": "spk_0", "text": "Hello this is the triage nurse. How can I help you today?"},
@@ -127,7 +130,8 @@ _register("cough_fever_telephone", {
                 "symptom": "cough",
                 "severity": None,
                 "onset": None,
-                "pattern": "productive",
+                "character": "productive",
+                "pattern": None,
                 "progression": None,
                 "laterality": None,
                 "radiation": None,
@@ -150,6 +154,7 @@ _register("cough_fever_telephone", {
 _register("abdominal_pain_consultation", {
     "encounter_type": "in_person_consultation",
     "theme": "abdominal_pain",
+    "language": "en",
     "participants": [_doctor("spk_0"), _patient("spk_1")],
     "dialogue": [
         {"speaker_id": "spk_0", "text": "Good afternoon. What is the problem today?"},
@@ -178,7 +183,8 @@ _register("abdominal_pain_consultation", {
                 "symptom": "abdominal pain",
                 "severity": None,
                 "onset": None,
-                "pattern": "cramping",
+                "character": "cramping",
+                "pattern": "intermittent",
                 "progression": None,
                 "laterality": "right",
                 "radiation": None,

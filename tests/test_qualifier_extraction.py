@@ -125,6 +125,103 @@ class TestOnset:
         assert result[0]["qualifiers"]["onset"] == "gradual"
 
 
+# ── character detection ─────────────────────────────────────────────
+
+
+class TestCharacter:
+    def test_cramping(self):
+        result = extract_qualifiers(
+            [_seg("cramping pain in the abdomen.")],
+            extracted_findings=["pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "cramping"
+
+    def test_burning(self):
+        result = extract_qualifiers(
+            [_seg("burning pain in the chest.")],
+            extracted_findings=["pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "burning"
+
+    def test_stabbing(self):
+        result = extract_qualifiers(
+            [_seg("stabbing headache.")],
+            extracted_findings=["headache"],
+        )
+        assert result[0]["qualifiers"]["character"] == "stabbing"
+
+    def test_dull(self):
+        result = extract_qualifiers(
+            [_seg("dull pain in the back.")],
+            extracted_findings=["pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "dull"
+
+    def test_sharp(self):
+        result = extract_qualifiers(
+            [_seg("sharp chest pain.")],
+            extracted_findings=["chest pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "sharp"
+
+    def test_throbbing(self):
+        result = extract_qualifiers(
+            [_seg("throbbing headache.")],
+            extracted_findings=["headache"],
+        )
+        assert result[0]["qualifiers"]["character"] == "throbbing"
+
+    def test_pressure_like(self):
+        result = extract_qualifiers(
+            [_seg("pressure-like chest pain.")],
+            extracted_findings=["chest pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "pressure-like"
+
+    def test_pressure_synonym(self):
+        result = extract_qualifiers(
+            [_seg("pressure in the chest pain area.")],
+            extracted_findings=["chest pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "pressure-like"
+
+    def test_productive(self):
+        result = extract_qualifiers(
+            [_seg("productive cough with mucus.")],
+            extracted_findings=["cough"],
+        )
+        assert result[0]["qualifiers"]["character"] == "productive"
+
+    def test_squeezing(self):
+        result = extract_qualifiers(
+            [_seg("squeezing chest pain.")],
+            extracted_findings=["chest pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "squeezing"
+
+    def test_colicky(self):
+        result = extract_qualifiers(
+            [_seg("colicky pain in the abdomen.")],
+            extracted_findings=["pain"],
+        )
+        assert result[0]["qualifiers"]["character"] == "colicky"
+
+    def test_pounding_maps_to_throbbing(self):
+        result = extract_qualifiers(
+            [_seg("pounding headache.")],
+            extracted_findings=["headache"],
+        )
+        assert result[0]["qualifiers"]["character"] == "throbbing"
+
+    def test_negated_character(self):
+        result = extract_qualifiers(
+            [_seg("not sharp headache.")],
+            extracted_findings=["headache"],
+        )
+        if result:
+            assert "character" not in result[0]["qualifiers"]
+
+
 # ── pattern detection ───────────────────────────────────────────────
 
 
@@ -450,7 +547,7 @@ class TestNoSymptom:
 class TestAmbiguity:
     def test_qualifier_too_far_from_symptom(self):
         result = extract_qualifiers(
-            [_seg("severe. the patient also mentioned something else entirely about a headache.")],
+            [_seg("severe. the patient also mentioned many other things and talked at great length about various unrelated topics before finally bringing up a headache.")],
             extracted_findings=["headache"],
         )
         # "severe" is too far from "headache" — should not link
@@ -523,7 +620,7 @@ class TestCombined:
 
     def test_full_qualifier_set(self):
         result = extract_qualifiers(
-            [_seg("severe sudden intermittent worsening left headache "
+            [_seg("severe sudden throbbing intermittent worsening left headache "
                   "radiating to the neck worse with movement relieved by rest.")],
             extracted_findings=["headache"],
         )
@@ -531,6 +628,7 @@ class TestCombined:
         q = result[0]["qualifiers"]
         assert q["severity"] == "severe"
         assert q["onset"] == "sudden"
+        assert q["character"] == "throbbing"
         assert q["pattern"] == "intermittent"
         assert q["progression"] == "worsening"
         assert q["laterality"] == "left"
@@ -644,3 +742,190 @@ class TestEdgeCases:
         )
         # No qualifiers on either — should return empty
         assert result == []
+
+
+# ── cross-segment linking ────────────────────────────────────────
+
+
+class TestCrossSegmentLinking:
+    def test_qualifier_in_later_segment(self):
+        """Qualifier in seg 2 links to symptom in seg 1."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("it's dull.", seg_id="seg_0002", t0=1.0, t1=2.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        assert len(result) == 1
+        assert result[0]["symptom"] == "chest pain"
+        assert result[0]["qualifiers"]["character"] == "dull"
+
+    def test_qualifier_two_segments_later(self):
+        """Qualifier 2 segments after symptom still links (within window)."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("it started yesterday.", seg_id="seg_0002", t0=1.0, t1=2.0),
+                _seg("it's a dull ache.", seg_id="seg_0003", t0=2.0, t1=3.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        assert len(result) == 1
+        assert result[0]["qualifiers"]["character"] == "dull"
+
+    def test_qualifier_beyond_window_no_link(self):
+        """Qualifier too far from symptom doesn't link."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("unrelated.", seg_id="seg_0002", t0=1.0, t1=2.0),
+                _seg("unrelated.", seg_id="seg_0003", t0=2.0, t1=3.0),
+                _seg("unrelated.", seg_id="seg_0004", t0=3.0, t1=4.0),
+                _seg("it's dull.", seg_id="seg_0005", t0=4.0, t1=5.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        assert result == []
+
+    def test_multiword_symptom_carried_forward(self):
+        """Multi-word symptom from prior segment carried to later segment."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("it's dull and constant.", seg_id="seg_0002", t0=1.0, t1=2.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        # "chest pain" carried forward from seg 1 to enrich seg 2
+        assert len(result) == 1
+        assert result[0]["symptom"] == "chest pain"
+        assert result[0]["qualifiers"]["character"] == "dull"
+        assert result[0]["qualifiers"]["pattern"] == "constant"
+
+    def test_new_symptom_resets_context(self):
+        """A new symptom in a later segment becomes the context."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("I also have a cough.", seg_id="seg_0002", t0=1.0, t1=2.0),
+                _seg("it's productive.", seg_id="seg_0003", t0=2.0, t1=3.0),
+            ],
+            extracted_findings=["chest pain", "cough"],
+        )
+        symptoms = {r["symptom"]: r["qualifiers"] for r in result}
+        assert symptoms["cough"]["character"] == "productive"
+
+
+# ── question skipping ────────────────────────────────────────────
+
+
+class TestQuestionSkipping:
+    def test_doctor_question_skipped(self):
+        """Doctor question ending in ? should not produce qualifiers."""
+        result = extract_qualifiers(
+            [_seg("Is it sharp or dull?")],
+            extracted_findings=["pain"],
+        )
+        assert result == []
+
+    def test_doctor_question_dry_or_productive(self):
+        """'Is it dry or productive?' should not match cough character."""
+        result = extract_qualifiers(
+            [
+                _seg("I have a cough.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("Is it dry or productive?", seg_id="seg_0002", t0=1.0, t1=2.0),
+                _seg("it's productive.", seg_id="seg_0003", t0=2.0, t1=3.0),
+            ],
+            extracted_findings=["cough"],
+        )
+        assert len(result) == 1
+        assert result[0]["qualifiers"]["character"] == "productive"
+
+    def test_non_question_not_skipped(self):
+        """Statement segments are still processed."""
+        result = extract_qualifiers(
+            [_seg("severe headache all day.")],
+            extracted_findings=["headache"],
+        )
+        assert len(result) == 1
+        assert result[0]["qualifiers"]["severity"] == "severe"
+
+
+# ── conversational factor patterns ───────────────────────────────
+
+
+class TestConversationalFactors:
+    def test_gets_worse_when(self):
+        result = extract_qualifiers(
+            [_seg("chest pain gets worse when I walk up stairs.")],
+            extracted_findings=["chest pain"],
+        )
+        agg = result[0]["qualifiers"]["aggravating_factors"]
+        assert any("walk" in f.lower() for f in agg)
+
+    def test_worse_when(self):
+        result = extract_qualifiers(
+            [_seg("headache worse when I bend over.")],
+            extracted_findings=["headache"],
+        )
+        agg = result[0]["qualifiers"]["aggravating_factors"]
+        assert any("bend" in f.lower() for f in agg)
+
+    def test_gets_better_when(self):
+        result = extract_qualifiers(
+            [_seg("chest pain gets better when I rest.")],
+            extracted_findings=["chest pain"],
+        )
+        rel = result[0]["qualifiers"]["relieving_factors"]
+        assert any("rest" in f.lower() for f in rel)
+
+    def test_better_when(self):
+        result = extract_qualifiers(
+            [_seg("pain better when I sit down.")],
+            extracted_findings=["pain"],
+        )
+        rel = result[0]["qualifiers"]["relieving_factors"]
+        assert any("sit" in f.lower() for f in rel)
+
+    def test_worse_if(self):
+        result = extract_qualifiers(
+            [_seg("cough worse if I lie down.")],
+            extracted_findings=["cough"],
+        )
+        agg = result[0]["qualifiers"]["aggravating_factors"]
+        assert any("lie" in f.lower() for f in agg)
+
+    def test_better_if(self):
+        result = extract_qualifiers(
+            [_seg("pain better if I take ibuprofen.")],
+            extracted_findings=["pain"],
+        )
+        rel = result[0]["qualifiers"]["relieving_factors"]
+        assert any("ibuprofen" in f.lower() for f in rel)
+
+    def test_cross_segment_aggravating(self):
+        """Conversational factor in later segment links to prior symptom."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("it gets worse when I walk up stairs.", seg_id="seg_0002", t0=1.0, t1=2.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        assert len(result) == 1
+        agg = result[0]["qualifiers"]["aggravating_factors"]
+        assert any("walk" in f.lower() for f in agg)
+
+    def test_cross_segment_relieving(self):
+        """Conversational relieving factor in later segment."""
+        result = extract_qualifiers(
+            [
+                _seg("I have chest pain.", seg_id="seg_0001", t0=0.0, t1=1.0),
+                _seg("it gets better when I rest.", seg_id="seg_0002", t0=1.0, t1=2.0),
+            ],
+            extracted_findings=["chest pain"],
+        )
+        assert len(result) == 1
+        rel = result[0]["qualifiers"]["relieving_factors"]
+        assert any("rest" in f.lower() for f in rel)

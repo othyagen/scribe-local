@@ -34,6 +34,7 @@ _EXPECTED_KEYS = {
     "ice",
     "intensities",
     "sites",
+    "encounters",
     "clinical_graph",
 }
 
@@ -264,7 +265,9 @@ class TestFiveLayerModel:
     def test_clinical_graph_empty_for_no_symptoms(self):
         state = build_clinical_state([_seg("hello.")])
         cg = state["clinical_graph"]
-        assert cg["nodes"] == []
+        # Encounter node still present even without symptoms
+        non_encounter = [n for n in cg["nodes"] if n["node_type"] != "encounter"]
+        assert non_encounter == []
         assert cg["edges"] == []
 
     def test_backward_compatibility(self):

@@ -21,6 +21,7 @@ class NodeType:
     INTENSITY = "intensity"
     DURATION = "duration"
     RADIATION = "radiation"
+    ENCOUNTER = "encounter"
 
 
 class EdgeType:
@@ -41,3 +42,6 @@ class EdgeType:
     HAS_SEVERITY = "HAS_SEVERITY"
     HAS_DURATION = "HAS_DURATION"
     HAS_RADIATION = "HAS_RADIATION"
+    HAS_OBSERVATION = "HAS_OBSERVATION"
+    HAS_ACTION = "HAS_ACTION"
+    HAS_DOCUMENT = "HAS_DOCUMENT"

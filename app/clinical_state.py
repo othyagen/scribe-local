@@ -44,6 +44,7 @@ from app.temporal_normalizer import normalize_timeline
 from app.temporal_reasoner import derive_temporal_context
 from app.red_flag_detector import detect_red_flags
 from app.output_selector import apply_optional_outputs
+from app.encounter import build_encounters
 from app.clinical_graph import build_clinical_graph
 
 
@@ -106,6 +107,9 @@ def build_clinical_state(
     state["observations"] = build_observation_layer(
         segments, symptoms, negations, durations, medications,
     )
+
+    # Encounter timeline
+    state["encounters"] = build_encounters(segments, state["observations"])
 
     # Layer 2 additions
     state["ice"] = extract_ice(segments)

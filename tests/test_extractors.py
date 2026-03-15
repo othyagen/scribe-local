@@ -152,6 +152,37 @@ class TestDurationExtraction:
         r2 = extract_durations(text)
         assert r1 == r2
 
+    def test_spelled_out_days(self):
+        result = extract_durations("chest pain for three days")
+        assert result == ["three days"]
+
+    def test_spelled_out_weeks(self):
+        result = extract_durations("pain for two weeks now")
+        assert result == ["two weeks"]
+
+    def test_spelled_out_months(self):
+        result = extract_durations("cough lasting five months")
+        assert result == ["five months"]
+
+    def test_spelled_out_case_insensitive(self):
+        result = extract_durations("symptoms for Three Days")
+        assert result == ["three days"]
+
+    def test_mixed_numeric_and_spelled(self):
+        result = extract_durations("three days of pain and 2 weeks of cough")
+        assert "three days" in result
+        assert "2 weeks" in result
+
+    def test_spelled_out_unique(self):
+        result = extract_durations("three days ago, still three days later")
+        assert result.count("three days") == 1
+
+    def test_spelled_deterministic(self):
+        text = "three days, five weeks, two months"
+        r1 = extract_durations(text)
+        r2 = extract_durations(text)
+        assert r1 == r2
+
 
 # ── medication extraction ────────────────────────────────────────────
 

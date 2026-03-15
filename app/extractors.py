@@ -135,21 +135,53 @@ _DURATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_WORD_NUMBERS: dict[str, str] = {
+    "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+    "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+    "eleven": "11", "twelve": "12", "thirteen": "13", "fourteen": "14",
+    "fifteen": "15", "twenty": "20", "thirty": "30",
+}
+
+_SPELLED_DURATION_PATTERN = re.compile(
+    r"\b(" + "|".join(sorted(_WORD_NUMBERS, key=len, reverse=True))
+    + r")\s+(days?|weeks?|months?|years?|hours?|minutes?)\b",
+    re.IGNORECASE,
+)
+
 
 def extract_durations(text: str) -> list[str]:
-    """Extract duration phrases like '3 days', '2 weeks'.
+    """Extract duration phrases like '3 days', 'three days', '2 weeks'.
+
+    Matches both numeric (``3 days``) and spelled-out (``three days``)
+    forms.  Spelled-out durations are returned as-is (e.g. ``three days``).
 
     Returns unique items in first-occurrence order.
     """
     seen: set[str] = set()
     results: list[str] = []
+
+    # Collect all matches with their positions for first-occurrence ordering
+    matches: list[tuple[int, str]] = []
+
     for m in _DURATION_PATTERN.finditer(text):
         value = m.group(1)
         unit = m.group(2).lower()
-        item = f"{value} {unit}"
-        if item not in seen:
-            seen.add(item)
+        matches.append((m.start(), f"{value} {unit}"))
+
+    for m in _SPELLED_DURATION_PATTERN.finditer(text):
+        word = m.group(1).lower()
+        unit = m.group(2).lower()
+        matches.append((m.start(), f"{word} {unit}"))
+
+    # Sort by position for first-occurrence order
+    matches.sort(key=lambda x: x[0])
+
+    for _, item in matches:
+        key = item.lower()
+        if key not in seen:
+            seen.add(key)
             results.append(item)
+
     return results
 
 

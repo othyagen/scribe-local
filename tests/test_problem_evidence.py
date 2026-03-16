@@ -167,7 +167,10 @@ class TestIntegration:
             _seg("patient has headache.", seg_id="seg_0001", t0=0.0, t1=3.0),
         ])
         for prob in state["problems"]:
-            assert prob["supporting_observations"] == prob["observations"]
+            supporting_ids = [
+                ev["observation_id"] for ev in prob["supporting_observations"]
+            ]
+            assert supporting_ids == prob["observations"]
 
     def test_conflicting_empty_in_v1(self):
         state = build_clinical_state([

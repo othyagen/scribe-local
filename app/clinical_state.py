@@ -51,6 +51,7 @@ from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
 from app.problem_evidence import annotate_problem_evidence
 from app.diagnostic_hypotheses import build_diagnostic_hypotheses
+from app.evidence_strength import annotate_evidence_strength
 
 
 def build_clinical_state(
@@ -158,6 +159,11 @@ def build_clinical_state(
 
     # Diagnostic hypotheses — candidate conditions from hints
     state["hypotheses"] = build_diagnostic_hypotheses(state)
+
+    # Evidence strength — annotate evidence with strength levels
+    state["problems"], state["hypotheses"] = annotate_evidence_strength(
+        state["problems"], state["observations"], state["hypotheses"],
+    )
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

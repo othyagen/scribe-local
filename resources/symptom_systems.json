@@ -1,0 +1,46 @@
+{
+  "respiratory": [
+    "cough",
+    "dyspnea",
+    "shortness of breath",
+    "sputum",
+    "wheezing"
+  ],
+  "cardiac": [
+    "chest pain",
+    "palpitations",
+    "syncope"
+  ],
+  "gastrointestinal": [
+    "abdominal pain",
+    "nausea",
+    "vomiting",
+    "diarrhea"
+  ],
+  "neurological": [
+    "headache",
+    "dizziness",
+    "numbness",
+    "tingling",
+    "weakness"
+  ],
+  "musculoskeletal": [
+    "back pain",
+    "joint pain",
+    "neck pain",
+    "muscle pain"
+  ],
+  "urological": [
+    "dysuria",
+    "frequency",
+    "urgency",
+    "hematuria"
+  ],
+  "general": [
+    "fever",
+    "fatigue",
+    "malaise",
+    "weight loss",
+    "night sweats"
+  ]
+}

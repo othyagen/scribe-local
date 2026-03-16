@@ -35,6 +35,7 @@ _EXPECTED_KEYS = {
     "intensities",
     "sites",
     "encounters",
+    "symptom_groups",
     "problems",
     "hypotheses",
     "clinical_graph",

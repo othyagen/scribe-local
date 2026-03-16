@@ -47,6 +47,7 @@ from app.temporal_reasoner import derive_temporal_context
 from app.red_flag_detector import detect_red_flags
 from app.output_selector import apply_optional_outputs
 from app.encounter import build_encounters
+from app.symptom_groups import build_symptom_groups
 from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
 from app.problem_evidence import annotate_problem_evidence
@@ -121,6 +122,9 @@ def build_clinical_state(
 
     # Encounter timeline
     state["encounters"] = build_encounters(segments, state["observations"])
+
+    # Symptom groups — cluster related symptoms by encounter/system/temporal
+    state["symptom_groups"] = build_symptom_groups(state)
 
     # Layer 2 additions
     state["ice"] = extract_ice(segments)

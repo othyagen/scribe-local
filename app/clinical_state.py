@@ -49,6 +49,7 @@ from app.output_selector import apply_optional_outputs
 from app.encounter import build_encounters
 from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
+from app.problem_evidence import annotate_problem_evidence
 
 
 def build_clinical_state(
@@ -148,6 +149,11 @@ def build_clinical_state(
 
     # Problem list — observation-first, after all derived computations
     state["problems"] = build_problem_list(state)
+
+    # Problem evidence — annotate with supporting/conflicting references
+    state["problems"] = annotate_problem_evidence(
+        state["problems"], state["observations"],
+    )
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

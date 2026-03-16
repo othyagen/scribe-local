@@ -22,6 +22,7 @@ class NodeType:
     DURATION = "duration"
     RADIATION = "radiation"
     ENCOUNTER = "encounter"
+    PROBLEM = "problem"
 
 
 class EdgeType:

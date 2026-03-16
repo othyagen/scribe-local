@@ -35,6 +35,7 @@ _EXPECTED_KEYS = {
     "intensities",
     "sites",
     "encounters",
+    "problems",
     "clinical_graph",
 }
 
@@ -266,8 +267,9 @@ class TestFiveLayerModel:
         state = build_clinical_state([_seg("hello.")])
         cg = state["clinical_graph"]
         # Encounter node still present even without symptoms
-        non_encounter = [n for n in cg["nodes"] if n["node_type"] != "encounter"]
-        assert non_encounter == []
+        non_enc_prob = [n for n in cg["nodes"]
+                        if n["node_type"] not in ("encounter", "problem")]
+        assert non_enc_prob == []
         assert cg["edges"] == []
 
     def test_backward_compatibility(self):

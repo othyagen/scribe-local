@@ -12,6 +12,7 @@ from __future__ import annotations
 from app.graph.graph import ClinicalGraph
 from app.graph.symptom_builder import build_symptom_graph
 from app.graph.encounter_builder import build_encounter_graph
+from app.graph.problem_builder import build_problem_graph
 
 
 def build_clinical_graph(clinical_state: dict) -> ClinicalGraph:
@@ -30,6 +31,9 @@ def build_clinical_graph(clinical_state: dict) -> ClinicalGraph:
 
     # Encounter domain
     build_encounter_graph(graph, clinical_state)
+
+    # Problem domain
+    build_problem_graph(graph, clinical_state)
 
     # Future domain builders:
     # build_history_graph(graph, clinical_state)

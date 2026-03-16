@@ -45,6 +45,7 @@ from app.temporal_reasoner import derive_temporal_context
 from app.red_flag_detector import detect_red_flags
 from app.output_selector import apply_optional_outputs
 from app.encounter import build_encounters
+from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
 
 
@@ -139,6 +140,9 @@ def build_clinical_state(
 
     # Layer 4: Problem narrative
     state["derived"]["problem_narrative"] = build_problem_narrative(state)
+
+    # Problem list — observation-first, after all derived computations
+    state["problems"] = build_problem_list(state)
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

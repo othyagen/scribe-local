@@ -36,6 +36,7 @@ _EXPECTED_KEYS = {
     "sites",
     "encounters",
     "problems",
+    "hypotheses",
     "clinical_graph",
 }
 

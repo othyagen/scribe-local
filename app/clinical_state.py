@@ -50,6 +50,7 @@ from app.encounter import build_encounters
 from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
 from app.problem_evidence import annotate_problem_evidence
+from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 
 
 def build_clinical_state(
@@ -154,6 +155,9 @@ def build_clinical_state(
     state["problems"] = annotate_problem_evidence(
         state["problems"], state["observations"],
     )
+
+    # Diagnostic hypotheses — candidate conditions from hints
+    state["hypotheses"] = build_diagnostic_hypotheses(state)
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

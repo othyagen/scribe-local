@@ -52,6 +52,7 @@ from app.clinical_graph import build_clinical_graph
 from app.problem_evidence import annotate_problem_evidence
 from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 from app.evidence_strength import annotate_evidence_strength
+from app.hypothesis_ranking import rank_hypotheses
 
 
 def build_clinical_state(
@@ -164,6 +165,9 @@ def build_clinical_state(
     state["problems"], state["hypotheses"] = annotate_evidence_strength(
         state["problems"], state["observations"], state["hypotheses"],
     )
+
+    # Hypothesis ranking — score and rank by evidence strength
+    state["hypotheses"] = rank_hypotheses(state["hypotheses"])
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

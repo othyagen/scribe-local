@@ -219,6 +219,13 @@ class TestFiveLayerModel:
         state = build_clinical_state([_seg("patient has headache.")])
         assert isinstance(state["observations"], list)
 
+    def test_observations_enriched_with_category(self):
+        state = build_clinical_state([_seg("patient has headache.")])
+        for obs in state["observations"]:
+            assert "category" in obs
+            assert "attributes" in obs
+            assert "confidence" in obs
+
     def test_ice_is_dict_with_keys(self):
         state = build_clinical_state([_seg("hello.")])
         assert isinstance(state["ice"], dict)

@@ -32,6 +32,7 @@ from app.problem_representation import (
     build_problem_narrative,
 )
 from app.observation_layer import build_observation_layer
+from app.observation_taxonomy import enrich_observations
 from app.ice_extraction import extract_ice
 from app.intensity_extraction import extract_intensities
 from app.site_extraction import extract_sites
@@ -105,9 +106,10 @@ def build_clinical_state(
     }
 
     # Layer 1: Observations (all occurrences, not just first)
-    state["observations"] = build_observation_layer(
+    raw_observations = build_observation_layer(
         segments, symptoms, negations, durations, medications,
     )
+    state["observations"] = enrich_observations(raw_observations)
 
     # Encounter timeline
     state["encounters"] = build_encounters(segments, state["observations"])

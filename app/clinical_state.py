@@ -51,6 +51,7 @@ from app.symptom_groups import build_symptom_groups
 from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
 from app.clinical_summary import build_clinical_summary
+from app.clinical_insights import derive_clinical_insights
 from app.clinical_summary_views import build_summary_views
 from app.problem_evidence import annotate_problem_evidence
 from app.diagnostic_hypotheses import build_diagnostic_hypotheses
@@ -186,6 +187,9 @@ def build_clinical_state(
 
     # Summary views — derived selectors on the clinical summary
     state["summary_views"] = build_summary_views(state["clinical_summary"])
+
+    # Clinical insights — gap analysis and next-step prompts
+    state["clinical_insights"] = derive_clinical_insights(state)
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

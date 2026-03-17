@@ -38,6 +38,7 @@ _EXPECTED_KEYS = {
     "symptom_groups",
     "problems",
     "hypotheses",
+    "clinical_summary",
     "clinical_graph",
 }
 
@@ -52,7 +53,7 @@ class TestStructure:
 
     def test_all_values_are_lists_except_roles_history_derived_ice(self):
         state = build_clinical_state([_seg("hello.")])
-        for key in _EXPECTED_KEYS - {"speaker_roles", "history", "derived", "ice", "clinical_graph"}:
+        for key in _EXPECTED_KEYS - {"speaker_roles", "history", "derived", "ice", "clinical_graph", "clinical_summary"}:
             assert isinstance(state[key], list), f"{key} should be a list"
         assert isinstance(state["history"], dict)
         assert isinstance(state["derived"], dict)

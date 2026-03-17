@@ -50,6 +50,7 @@ from app.encounter import build_encounters
 from app.symptom_groups import build_symptom_groups
 from app.problem_model import build_problem_list
 from app.clinical_graph import build_clinical_graph
+from app.clinical_summary import build_clinical_summary
 from app.problem_evidence import annotate_problem_evidence
 from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 from app.evidence_strength import annotate_evidence_strength
@@ -178,6 +179,9 @@ def build_clinical_state(
     state["hypotheses"] = build_hypothesis_explanations(
         state["hypotheses"], state["observations"],
     )
+
+    # Clinical summary — format-neutral structured summary
+    state["clinical_summary"] = build_clinical_summary(state)
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

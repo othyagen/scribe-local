@@ -41,6 +41,7 @@ _EXPECTED_KEYS = {
     "clinical_summary",
     "summary_views",
     "clinical_insights",
+    "next_questions",
     "clinical_graph",
 }
 

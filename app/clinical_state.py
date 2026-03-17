@@ -58,6 +58,7 @@ from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 from app.evidence_strength import annotate_evidence_strength
 from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
+from app.clinical_interaction import derive_next_questions
 
 
 def build_clinical_state(
@@ -190,6 +191,9 @@ def build_clinical_state(
 
     # Clinical insights — gap analysis and next-step prompts
     state["clinical_insights"] = derive_clinical_insights(state)
+
+    # Clinical interaction — prioritised next-step questions
+    state["next_questions"] = derive_next_questions(state)
 
     # Clinical graph — additive evidence-aware representation
     state["clinical_graph"] = build_clinical_graph(state).to_dict()

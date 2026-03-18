@@ -6,6 +6,7 @@ import pytest
 
 from app.clinical_orchestration import (
     orchestrate_outputs,
+    should_apply_update,
     _resolve_config,
     _DEFAULT_CONFIG,
     _VALID_MODES,
@@ -285,3 +286,51 @@ class TestIntegration:
         assert vo["clinical_insights"] is not None
         assert vo["clinical_questions"] is not None
         assert result["update_behavior"]["update_strategy"] == "automatic"
+
+
+# ── should_apply_update ──────────────────────────────────────────────
+
+
+class TestShouldApplyUpdate:
+    def test_automatic_returns_true(self):
+        assert should_apply_update({"update_strategy": "automatic"}, "new_answers") is True
+
+    def test_manual_returns_false(self):
+        assert should_apply_update({"update_strategy": "manual"}, "new_answers") is False
+
+    def test_default_config_returns_false(self):
+        assert should_apply_update(None, "new_answers") is False
+
+    def test_invalid_strategy_falls_back_to_manual(self):
+        assert should_apply_update({"update_strategy": "invalid"}, "new_answers") is False
+
+    def test_automatic_with_different_events(self):
+        cfg = {"update_strategy": "automatic"}
+        assert should_apply_update(cfg, "new_answers") is True
+        assert should_apply_update(cfg, "session_end") is True
+        assert should_apply_update(cfg, "manual_trigger") is True
+
+    def test_manual_with_different_events(self):
+        cfg = {"update_strategy": "manual"}
+        assert should_apply_update(cfg, "new_answers") is False
+        assert should_apply_update(cfg, "session_end") is False
+
+    def test_does_not_mutate_config(self):
+        cfg = {"update_strategy": "automatic"}
+        original = dict(cfg)
+        should_apply_update(cfg, "new_answers")
+        assert cfg == original
+
+    def test_deterministic(self):
+        cfg = {"update_strategy": "automatic"}
+        r1 = should_apply_update(cfg, "new_answers")
+        r2 = should_apply_update(cfg, "new_answers")
+        assert r1 == r2
+
+    def test_partial_config(self):
+        """Config with mode but no strategy uses default (manual)."""
+        assert should_apply_update({"mode": "assist"}, "new_answers") is False
+
+    def test_assist_mode_automatic(self):
+        cfg = {"mode": "assist", "update_strategy": "automatic"}
+        assert should_apply_update(cfg, "new_answers") is True

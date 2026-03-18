@@ -68,6 +68,28 @@ def orchestrate_outputs(
     }
 
 
+def should_apply_update(config: dict | None, event_type: str) -> bool:
+    """Decide whether a state update should be applied.
+
+    Args:
+        config: orchestration configuration (same format as
+            :func:`orchestrate_outputs`).  ``None`` uses defaults.
+        event_type: the kind of event triggering the update
+            (e.g. ``"new_answers"``).
+
+    Returns:
+        ``True`` if the update should proceed, ``False`` otherwise.
+    """
+    cfg = _resolve_config(config)
+    strategy = cfg["update_strategy"]
+
+    if strategy == "automatic":
+        return True
+
+    # "manual" — updates must be explicitly requested by the caller.
+    return False
+
+
 def _resolve_config(config: dict | None) -> dict:
     """Merge caller config with defaults, validating enum fields."""
     if config is None:

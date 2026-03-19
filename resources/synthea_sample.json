@@ -1,0 +1,32 @@
+[
+  {
+    "id": "p1",
+    "age": 65,
+    "gender": "male",
+    "conditions": ["pneumonia", "hypertension"],
+    "symptoms": ["cough", "fever", "shortness of breath"],
+    "duration_days": 3,
+    "medications": ["lisinopril"],
+    "allergies": []
+  },
+  {
+    "id": "p2",
+    "age": 42,
+    "gender": "female",
+    "conditions": ["urinary tract infection"],
+    "symptoms": ["dysuria", "urinary frequency", "abdominal pain"],
+    "duration_days": 2,
+    "medications": [],
+    "allergies": ["penicillin"]
+  },
+  {
+    "id": "p3",
+    "age": 58,
+    "gender": "male",
+    "conditions": ["acute coronary syndrome", "diabetes"],
+    "symptoms": ["chest pain", "shortness of breath", "nausea"],
+    "duration_days": 1,
+    "medications": ["metformin", "aspirin"],
+    "allergies": []
+  }
+]

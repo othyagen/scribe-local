@@ -1,0 +1,47 @@
+case_id: pneumonia_01
+title: Community-acquired pneumonia
+description: >
+  65-year-old male presenting with productive cough, fever, and
+  shortness of breath for 3 days.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "65-year-old male with cough and fever for 3 days."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Feels more short of breath today."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Denies chest pain. No nausea or vomiting."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Pneumonia
+  red_flags: []
+  key_findings:
+    - cough
+    - fever
+    - shortness of breath
+
+answer_script:
+  - question_type: duration
+    value: "3 days"
+    related: cough
+
+meta:
+  tags: [respiratory, infection]
+  difficulty: easy
+  source: synthetic
+  notes: Basic pneumonia presentation.

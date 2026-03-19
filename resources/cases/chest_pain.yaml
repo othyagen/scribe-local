@@ -1,0 +1,57 @@
+case_id: chest_pain_01
+title: Acute chest pain — angina-like
+description: >
+  58-year-old male with substernal chest pain radiating to left arm,
+  worsened by exertion, relieved by rest.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "58-year-old male with chest pain for 2 hours."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain radiates to the left arm."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse with exertion and relieved by rest."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "Denies shortness of breath. Denies nausea."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Currently taking aspirin."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses: []
+  red_flags: []
+  key_findings:
+    - chest pain
+
+answer_script:
+  - question_type: severity
+    value: "severe"
+    related: chest pain
+  - question_type: duration
+    value: "2 hours"
+    related: chest pain
+
+meta:
+  tags: [cardiac, emergency]
+  difficulty: moderate
+  source: synthetic
+  notes: Angina-like presentation with classic features.

@@ -55,6 +55,28 @@ class TestRuleMatching:
         assert "Upper respiratory tract infection" in conditions
         assert "Migraine" in conditions
 
+    def test_uti_rule(self):
+        symptoms = ["dysuria", "urinary frequency"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Urinary tract infection" in conditions
+        uti = next(h for h in hints if h["condition"] == "Urinary tract infection")
+        assert uti["snomed_code"] == "68566005"
+        assert set(uti["evidence"]) == {"dysuria", "urinary frequency"}
+
+    def test_uti_partial_match_does_not_trigger(self):
+        symptoms = ["dysuria"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Urinary tract infection" not in conditions
+
+    def test_uti_negation_blocks(self):
+        symptoms = ["dysuria", "urinary frequency"]
+        negations = ["Denies dysuria"]
+        hints = generate_diagnostic_hints(symptoms, negations)
+        conditions = [h["condition"] for h in hints]
+        assert "Urinary tract infection" not in conditions
+
     def test_case_insensitive(self):
         symptoms = ["Fever", "Cough", "Shortness of Breath"]
         hints = generate_diagnostic_hints(symptoms)

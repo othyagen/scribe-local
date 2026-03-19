@@ -27,7 +27,8 @@ config:
   show_questions: true
 
 ground_truth:
-  expected_hypotheses: []
+  expected_hypotheses:
+    - Urinary tract infection
   red_flags: []
   key_findings:
     - dysuria

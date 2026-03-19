@@ -64,6 +64,11 @@ RULES: list[dict] = [
         "condition": "Generalised anxiety disorder",
         "snomed": "21897009",
     },
+    {
+        "symptoms": ["dysuria", "urinary frequency"],
+        "condition": "Urinary tract infection",
+        "snomed": "68566005",
+    },
 ]
 
 # Pre-compile patterns to detect negated symptoms from negation strings.

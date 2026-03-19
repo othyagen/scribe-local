@@ -46,6 +46,12 @@ _DEFAULT_SYMPTOMS: list[str] = [
 
 SYMPTOM_KEYWORDS: list[str] = load_vocab("symptoms", _DEFAULT_SYMPTOMS)
 
+# Synonym map: colloquial term → canonical name.
+# Applied at extraction time so downstream modules always see canonical names.
+_SYMPTOM_SYNONYMS: dict[str, str] = {
+    "painful urination": "dysuria",
+}
+
 # Pre-compile symptom patterns (longest first for multi-word matches)
 _SYMPTOM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE), kw)
@@ -57,15 +63,17 @@ def extract_symptoms(text: str) -> list[str]:
     """Extract symptom mentions from text.
 
     Returns unique symptoms in first-occurrence order, lowercase.
+    Synonym terms are canonicalised via ``_SYMPTOM_SYNONYMS``.
     """
     seen: set[str] = set()
     results: list[str] = []
     for pattern, keyword in _SYMPTOM_PATTERNS:
-        if keyword in seen:
+        canonical = _SYMPTOM_SYNONYMS.get(keyword, keyword)
+        if canonical in seen:
             continue
         if pattern.search(text):
-            seen.add(keyword)
-            results.append(keyword)
+            seen.add(canonical)
+            results.append(canonical)
     return results
 
 

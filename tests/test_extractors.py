@@ -52,6 +52,29 @@ class TestSymptomExtraction:
         r2 = extract_symptoms(text)
         assert r1 == r2
 
+    def test_dysuria_direct(self):
+        result = extract_symptoms("patient reports dysuria")
+        assert result == ["dysuria"]
+
+    def test_urinary_frequency_direct(self):
+        result = extract_symptoms("reports urinary frequency")
+        assert result == ["urinary frequency"]
+
+    def test_painful_urination_canonicalised_to_dysuria(self):
+        result = extract_symptoms("patient reports painful urination")
+        assert "dysuria" in result
+        assert "painful urination" not in result
+
+    def test_synonym_deduplicates_with_canonical(self):
+        """If text contains both 'painful urination' and 'dysuria', only one entry."""
+        result = extract_symptoms("painful urination and dysuria noted")
+        assert result.count("dysuria") == 1
+
+    def test_painful_urination_does_not_extract_bare_pain(self):
+        """'painful urination' should match as multi-word, not extract bare 'pain'."""
+        result = extract_symptoms("patient reports painful urination")
+        assert "pain" not in result
+
 
 # ── negation extraction ──────────────────────────────────────────────
 

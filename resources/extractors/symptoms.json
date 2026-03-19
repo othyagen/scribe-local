@@ -10,6 +10,7 @@
     "cramps",
     "diarrhea",
     "dizziness",
+    "dysuria",
     "fatigue",
     "fever",
     "headache",
@@ -17,6 +18,7 @@
     "nausea",
     "numbness",
     "pain",
+    "painful urination",
     "palpitations",
     "rash",
     "shortness of breath",
@@ -24,6 +26,7 @@
     "stiffness",
     "swelling",
     "tingling",
+    "urinary frequency",
     "vomiting",
     "weakness"
 ]

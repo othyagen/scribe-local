@@ -152,3 +152,33 @@ def is_red_flag(label: str) -> bool:
 def get_all_labels() -> list[str]:
     """Return all canonical labels in registry order."""
     return list(CLINICAL_TERMS.keys())
+
+
+def add_synonym(canonical: str, synonym: str) -> bool:
+    """Add a synonym to an existing canonical term at runtime.
+
+    Validates that *canonical* exists, *synonym* is non-empty,
+    not already a canonical key, and not already registered as
+    a synonym of any term.
+
+    Mutates :data:`CLINICAL_TERMS` and the reverse index in memory.
+    No file I/O.
+
+    Returns:
+        ``True`` if the synonym was added, ``False`` otherwise.
+    """
+    canon_key = canonical.strip().lower()
+    if canon_key not in CLINICAL_TERMS:
+        return False
+
+    syn_key = synonym.strip().lower()
+    if not syn_key:
+        return False
+    if syn_key in CLINICAL_TERMS:
+        return False
+    if syn_key in _SYNONYM_TO_CANONICAL:
+        return False
+
+    CLINICAL_TERMS[canon_key]["synonyms"].append(syn_key)
+    _SYNONYM_TO_CANONICAL[syn_key] = canon_key
+    return True

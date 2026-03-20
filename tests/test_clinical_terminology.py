@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+import copy
+
 from app.clinical_terminology import (
     CLINICAL_TERMS,
+    _SYNONYM_TO_CANONICAL,
+    add_synonym,
     get_canonical_label,
     get_term,
     is_red_flag,
@@ -202,3 +206,47 @@ class TestRegistryInvariants:
     def test_type_is_symptom(self):
         for label, term in CLINICAL_TERMS.items():
             assert term["type"] == "symptom", f"{label} type not symptom"
+
+
+# ── add_synonym ─────────────────────────────────────────────────────
+
+
+class TestAddSynonym:
+    """Tests for runtime synonym addition."""
+
+    @pytest.fixture(autouse=True)
+    def _snapshot_terminology(self):
+        """Save and restore CLINICAL_TERMS + reverse index after each test."""
+        terms_backup = copy.deepcopy(CLINICAL_TERMS)
+        index_backup = dict(_SYNONYM_TO_CANONICAL)
+        yield
+        CLINICAL_TERMS.clear()
+        CLINICAL_TERMS.update(terms_backup)
+        _SYNONYM_TO_CANONICAL.clear()
+        _SYNONYM_TO_CANONICAL.update(index_backup)
+
+    def test_add_valid_synonym(self):
+        assert add_synonym("fever", "high temperature") is True
+        assert get_canonical_label("high temperature") == "fever"
+
+    def test_synonym_added_lowercase(self):
+        add_synonym("fever", "High Temperature")
+        assert "high temperature" in CLINICAL_TERMS["fever"]["synonyms"]
+
+    def test_reject_unknown_canonical(self):
+        assert add_synonym("migraine", "headache") is False
+
+    def test_reject_empty_synonym(self):
+        assert add_synonym("fever", "") is False
+        assert add_synonym("fever", "   ") is False
+
+    def test_reject_synonym_is_canonical_key(self):
+        assert add_synonym("dyspnea", "cough") is False
+
+    def test_reject_already_registered_synonym(self):
+        assert add_synonym("dyspnea", "shortness of breath") is False
+
+    def test_does_not_mutate_on_rejection(self):
+        original_syns = list(CLINICAL_TERMS["fever"]["synonyms"])
+        add_synonym("fever", "cough")  # rejected: cough is canonical
+        assert CLINICAL_TERMS["fever"]["synonyms"] == original_syns

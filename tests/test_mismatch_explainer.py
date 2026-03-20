@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.mismatch_explainer import explain_mismatches, summarize_mismatches
+import copy
+
+from app.clinical_terminology import CLINICAL_TERMS, _SYNONYM_TO_CANONICAL
+from app.mismatch_explainer import (
+    apply_suggestions,
+    explain_mismatches,
+    summarize_mismatches,
+    suggest_improvements,
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -354,4 +362,247 @@ class TestSummarizeMismatches:
         ]
         r1 = summarize_mismatches(mismatches)
         r2 = summarize_mismatches(mismatches)
+        assert r1 == r2
+
+
+# ── suggest_improvements ────────────────────────────────────────────
+
+
+class TestSuggestImprovements:
+    def test_empty_summary(self):
+        result = suggest_improvements({})
+        assert result == []
+
+    def test_no_mismatches(self):
+        summary = summarize_mismatches([[], []])
+        result = suggest_improvements(summary)
+        assert result == []
+
+    def test_not_detected_suggestion(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "rash", "not_detected")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        assert len(result) >= 1
+        nd = [s for s in result if s["issue"] == "not_detected"]
+        assert len(nd) == 1
+        assert "fever" in nd[0]["affected_labels"]
+        assert "rash" in nd[0]["affected_labels"]
+        assert "extraction" in nd[0]["suggested_fix"].lower() or "symptoms.json" in nd[0]["suggested_fix"]
+
+    def test_synonym_suggestion(self):
+        mismatches = [
+            [_m("key_findings", "shortness of breath", "canonical_mismatch",
+                canonical="dyspnea")],
+            [_m("key_findings", "chest discomfort", "synonym_mismatch",
+                canonical="chest pain")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        syn = [s for s in result if s["issue"] == "synonym_or_canonical_mismatch"]
+        assert len(syn) == 1
+        assert "shortness of breath" in syn[0]["affected_labels"]
+        assert "chest discomfort" in syn[0]["affected_labels"]
+        assert "synonym" in syn[0]["suggested_fix"].lower()
+
+    def test_partial_overlap_suggestion(self):
+        mismatches = [
+            [_m("key_findings", "pain", "partial_overlap")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        po = [s for s in result if s["issue"] == "partial_overlap"]
+        assert len(po) == 1
+        assert "pain" in po[0]["affected_labels"]
+
+    def test_sorted_by_affected_count_desc(self):
+        mismatches = [
+            [_m("key_findings", "a", "not_detected"),
+             _m("key_findings", "b", "not_detected"),
+             _m("key_findings", "c", "not_detected"),
+             _m("key_findings", "x", "canonical_mismatch")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        if len(result) >= 2:
+            assert len(result[0]["affected_labels"]) >= len(result[1]["affected_labels"])
+
+    def test_output_structure(self):
+        mismatches = [[_m("key_findings", "fever", "not_detected")]]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        for s in result:
+            assert "issue" in s
+            assert "suggested_fix" in s
+            assert "affected_labels" in s
+            assert isinstance(s["affected_labels"], list)
+
+    def test_mixed_reasons(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "sob", "canonical_mismatch",
+                canonical="dyspnea"),
+             _m("key_findings", "pain", "partial_overlap")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        result = suggest_improvements(summary)
+        issues = {s["issue"] for s in result}
+        assert "not_detected" in issues or "partial_overlap" in issues
+        assert "synonym_or_canonical_mismatch" in issues
+
+    def test_deterministic(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "sob", "canonical_mismatch")],
+        ]
+        summary = summarize_mismatches(mismatches)
+        r1 = suggest_improvements(summary)
+        r2 = suggest_improvements(summary)
+        assert r1 == r2
+
+
+# ── apply_suggestions ───────────────────────────────────────────────
+
+
+def _suggestion(issue: str, labels: list[str]) -> dict:
+    """Build a minimal suggestion dict for apply_suggestions tests."""
+    return {
+        "issue": issue,
+        "suggested_fix": "test fix",
+        "affected_labels": labels,
+    }
+
+
+class TestApplySuggestions:
+    @pytest.fixture(autouse=True)
+    def _snapshot_terminology(self):
+        """Save and restore CLINICAL_TERMS + reverse index after each test."""
+        terms_backup = copy.deepcopy(CLINICAL_TERMS)
+        index_backup = dict(_SYNONYM_TO_CANONICAL)
+        yield
+        CLINICAL_TERMS.clear()
+        CLINICAL_TERMS.update(terms_backup)
+        _SYNONYM_TO_CANONICAL.clear()
+        _SYNONYM_TO_CANONICAL.update(index_backup)
+
+    def test_empty_suggestions(self):
+        result = apply_suggestions([])
+        assert result["proposed_changes"] == []
+        assert result["applied_changes"] == []
+        assert result["skipped_changes"] == []
+
+    def test_already_registered_synonym_skipped(self):
+        result = apply_suggestions([
+            _suggestion("synonym_or_canonical_mismatch",
+                        ["shortness of breath"]),
+        ])
+        assert result["proposed_changes"] == []
+        assert len(result["skipped_changes"]) == 1
+        assert result["skipped_changes"][0]["reason"] == "already_registered"
+
+    def test_already_registered_canonical_skipped(self):
+        result = apply_suggestions([
+            _suggestion("not_detected", ["fever"]),
+        ])
+        assert result["proposed_changes"] == []
+        assert len(result["skipped_changes"]) == 1
+        assert result["skipped_changes"][0]["reason"] == "already_registered"
+
+    def test_unknown_label_no_match_skipped(self):
+        result = apply_suggestions([
+            _suggestion("not_detected", ["rash"]),
+        ])
+        assert result["proposed_changes"] == []
+        assert len(result["skipped_changes"]) == 1
+        assert result["skipped_changes"][0]["reason"] == "no_safe_mapping"
+
+    def test_modifier_match_proposed(self):
+        # "severe chest pain" → "chest pain" with modifier "severe"
+        result = apply_suggestions([
+            _suggestion("not_detected", ["severe chest pain"]),
+        ])
+        assert len(result["proposed_changes"]) == 1
+        assert result["proposed_changes"][0]["canonical_target"] == "chest pain"
+        assert result["proposed_changes"][0]["action"] == "add_synonym"
+
+    def test_dry_run_does_not_apply(self):
+        result = apply_suggestions([
+            _suggestion("not_detected", ["severe chest pain"]),
+        ], dry_run=True)
+        assert len(result["proposed_changes"]) == 1
+        assert result["applied_changes"] == []
+        # Synonym not actually added.
+        from app.clinical_terminology import get_canonical_label
+        assert get_canonical_label("severe chest pain") == "severe chest pain"
+
+    def test_apply_adds_synonym(self):
+        result = apply_suggestions([
+            _suggestion("not_detected", ["severe chest pain"]),
+        ], dry_run=False)
+        assert len(result["proposed_changes"]) == 1
+        assert len(result["applied_changes"]) == 1
+        assert result["applied_changes"][0]["canonical_target"] == "chest pain"
+        # Synonym now resolves.
+        from app.clinical_terminology import get_canonical_label
+        assert get_canonical_label("severe chest pain") == "chest pain"
+
+    def test_postfix_modifier_match(self):
+        # "chest pain acute" → "chest pain" with modifier "acute"
+        result = apply_suggestions([
+            _suggestion("partial_overlap", ["chest pain acute"]),
+        ])
+        assert len(result["proposed_changes"]) == 1
+        assert result["proposed_changes"][0]["canonical_target"] == "chest pain"
+
+    def test_short_label_skipped(self):
+        # Labels shorter than 4 chars never get synonym proposals.
+        result = apply_suggestions([
+            _suggestion("not_detected", ["sob"]),
+        ])
+        # "sob" is already a synonym of "dyspnea" → already_registered
+        assert result["proposed_changes"] == []
+
+    def test_ambiguous_multiple_matches_skipped(self):
+        # "severe pain" contains "pain" which appears in both
+        # "chest pain" and "abdominal pain" — ambiguous.
+        result = apply_suggestions([
+            _suggestion("not_detected", ["severe pain"]),
+        ])
+        # Neither "chest pain" nor "abdominal pain" would match
+        # because "severe pain" doesn't end with or start with either.
+        assert result["proposed_changes"] == []
+        assert len(result["skipped_changes"]) == 1
+        assert result["skipped_changes"][0]["reason"] == "no_safe_mapping"
+
+    def test_single_word_modifier_only(self):
+        # "very severe chest pain" has multi-word modifier → no match.
+        result = apply_suggestions([
+            _suggestion("not_detected", ["very severe chest pain"]),
+        ])
+        assert result["proposed_changes"] == []
+
+    def test_output_structure(self):
+        result = apply_suggestions([
+            _suggestion("not_detected", ["severe chest pain", "rash"]),
+        ])
+        assert "proposed_changes" in result
+        assert "applied_changes" in result
+        assert "skipped_changes" in result
+        for change in result["proposed_changes"]:
+            assert "label" in change
+            assert "action" in change
+            assert "detail" in change
+        for change in result["skipped_changes"]:
+            assert "label" in change
+            assert "reason" in change
+
+    def test_deterministic(self):
+        suggestions = [
+            _suggestion("not_detected", ["severe chest pain", "rash"]),
+            _suggestion("synonym_or_canonical_mismatch", ["sob"]),
+        ]
+        r1 = apply_suggestions(suggestions)
+        r2 = apply_suggestions(suggestions)
         assert r1 == r2

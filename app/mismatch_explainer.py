@@ -13,7 +13,12 @@ Pure functions — no I/O, no ML, no input mutation, deterministic.
 from __future__ import annotations
 
 from app.canonicalization import canonicalize_label
-from app.clinical_terminology import get_canonical_label, get_term
+from app.clinical_terminology import (
+    CLINICAL_TERMS,
+    add_synonym,
+    get_canonical_label,
+    get_term,
+)
 
 
 # ── public API ───────────────────────────────────────────────────────
@@ -247,3 +252,240 @@ def _top_n(counts: dict[str, int], n: int) -> list[dict]:
     """Return top N entries sorted by count desc, then alphabetically."""
     sorted_items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
     return [{"label": k, "count": v} for k, v in sorted_items[:n]]
+
+
+# ── improvement suggestions ──────────────────────────────────────────
+
+
+def suggest_improvements(summary: dict) -> list[dict]:
+    """Generate actionable suggestions from a mismatch summary.
+
+    Maps common failure patterns to concrete fixes.  Rule-based,
+    deterministic, no LLM.
+
+    Args:
+        summary: dict from :func:`summarize_mismatches`.
+
+    Returns:
+        List of suggestion dicts, each with ``issue``,
+        ``suggested_fix``, and ``affected_labels`` keys.
+        Sorted by number of affected labels desc.
+    """
+    suggestions: list[dict] = []
+
+    by_reason = summary.get("by_reason", {})
+    top_missed = summary.get("top_missed_labels", [])
+    top_synonym = summary.get("top_synonym_issues", [])
+
+    # Not-detected labels → missing extraction rules or vocabulary.
+    not_detected_count = by_reason.get("not_detected", 0)
+    if not_detected_count > 0:
+        # Collect labels whose primary failure is not_detected.
+        # top_missed_labels includes all reasons; filter by checking
+        # that the label is not primarily a synonym issue.
+        synonym_set = {e["label"] for e in top_synonym}
+        nd_labels = [
+            e["label"] for e in top_missed
+            if e["label"] not in synonym_set
+        ]
+        if nd_labels:
+            suggestions.append({
+                "issue": "not_detected",
+                "suggested_fix": (
+                    "Add missing terms to resources/extractors/symptoms.json "
+                    "or add extraction rules — these labels were expected "
+                    "but never extracted from transcript text"
+                ),
+                "affected_labels": nd_labels,
+            })
+
+    # Synonym/canonical mismatches → add synonyms to terminology.
+    synonym_count = by_reason.get("synonym_mismatch", 0)
+    canonical_count = by_reason.get("canonical_mismatch", 0)
+    if synonym_count > 0 or canonical_count > 0:
+        syn_labels = [e["label"] for e in top_synonym]
+        if syn_labels:
+            suggestions.append({
+                "issue": "synonym_or_canonical_mismatch",
+                "suggested_fix": (
+                    "Add these labels as synonyms in "
+                    "app/clinical_terminology.py CLINICAL_TERMS — "
+                    "ground truth uses non-canonical forms that fail "
+                    "to match after canonicalization"
+                ),
+                "affected_labels": syn_labels,
+            })
+
+    # Partial overlap → labels too broad or too narrow.
+    partial_count = by_reason.get("partial_overlap", 0)
+    if partial_count > 0:
+        # Partial-overlap labels are in top_missed but not in synonym issues.
+        synonym_set = {e["label"] for e in top_synonym}
+        partial_labels = [
+            e["label"] for e in top_missed
+            if e["label"] not in synonym_set
+        ]
+        if partial_labels:
+            suggestions.append({
+                "issue": "partial_overlap",
+                "suggested_fix": (
+                    "Ground truth labels partially match detected terms — "
+                    "use more specific canonical labels in case YAML "
+                    "or add exact synonyms to clinical terminology"
+                ),
+                "affected_labels": partial_labels,
+            })
+
+    # Sort by number of affected labels desc.
+    suggestions.sort(key=lambda s: -len(s["affected_labels"]))
+
+    return suggestions
+
+
+# ── apply suggestions ───────────────────────────────────────────────
+
+
+def apply_suggestions(
+    suggestions: list[dict],
+    *,
+    dry_run: bool = True,
+) -> dict:
+    """Apply safe, automatic updates from improvement suggestions.
+
+    Currently the only safe auto-apply action is adding a synonym to
+    :mod:`app.clinical_terminology` when a label matches an existing
+    canonical term with high confidence.  Extractor and core reasoning
+    changes are never applied automatically.
+
+    Args:
+        suggestions: list from :func:`suggest_improvements`.
+        dry_run: if ``True`` (default), return proposed changes only.
+            If ``False``, apply safe updates and populate
+            ``applied_changes``.
+
+    Returns:
+        Dict with ``proposed_changes``, ``applied_changes``, and
+        ``skipped_changes`` (with reasons).
+    """
+    proposed: list[dict] = []
+    applied: list[dict] = []
+    skipped: list[dict] = []
+
+    for suggestion in suggestions:
+        for label in suggestion.get("affected_labels", []):
+            change = _classify_label(label)
+
+            if change["action"] == "add_synonym":
+                proposed.append(change)
+                if not dry_run:
+                    ok = add_synonym(change["canonical_target"], label)
+                    if ok:
+                        applied.append(change)
+            else:
+                skipped.append(change)
+
+    return {
+        "proposed_changes": proposed,
+        "applied_changes": applied,
+        "skipped_changes": skipped,
+    }
+
+
+def _classify_label(label: str) -> dict:
+    """Classify a single label into an action category."""
+    norm = label.strip().lower()
+
+    # Already known — synonym or canonical term.
+    canonical = get_canonical_label(label)
+    if canonical != label.strip():
+        return {
+            "label": label,
+            "action": "skip",
+            "reason": "already_registered",
+            "detail": f"'{label}' already maps to '{canonical}'",
+        }
+
+    if norm in CLINICAL_TERMS:
+        return {
+            "label": label,
+            "action": "skip",
+            "reason": "already_registered",
+            "detail": f"'{label}' is a canonical term",
+        }
+
+    # Try to find a strong synonym target.
+    target = _find_synonym_target(norm)
+    if target is not None:
+        return {
+            "label": label,
+            "action": "add_synonym",
+            "canonical_target": target,
+            "detail": f"Add '{label}' as synonym of '{target}'",
+        }
+
+    # Unknown label with no strong match — needs manual work.
+    return {
+        "label": label,
+        "action": "skip",
+        "reason": "no_safe_mapping",
+        "detail": f"No confident canonical target for '{label}'",
+    }
+
+
+def _find_synonym_target(norm_label: str) -> str | None:
+    """Find an existing canonical term that strongly matches *norm_label*.
+
+    Matching rule — exactly ONE of these must hold for exactly ONE
+    canonical term:
+
+    * The label equals ``<modifier> <canonical>`` (e.g.
+      "severe chest pain" where "chest pain" is canonical).
+    * The label equals ``<canonical> <modifier>`` (e.g.
+      "chest pain severe").
+
+    The canonical term must appear as a complete word-boundary-aligned
+    suffix or prefix of the label, not merely a substring anywhere.
+    Short labels (< 4 chars) and short canonical terms (< 4 chars)
+    are excluded to prevent spurious matches.
+
+    Returns:
+        The canonical term key if exactly one strong match is found,
+        ``None`` otherwise (zero matches or ambiguous).
+    """
+    if len(norm_label) < 4:
+        return None
+
+    matches: list[str] = []
+    for term_key in CLINICAL_TERMS:
+        if len(term_key) < 4:
+            continue
+        if term_key == norm_label:
+            # Exact match handled by caller (already_registered).
+            continue
+        if _is_modifier_match(norm_label, term_key):
+            matches.append(term_key)
+
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _is_modifier_match(label: str, canonical: str) -> bool:
+    """Return True if *label* is *canonical* with a modifier word prepended or appended.
+
+    Requires the canonical part to be word-boundary-aligned and the
+    modifier to be at least 2 characters.
+    """
+    # "<modifier> <canonical>"
+    if label.endswith(" " + canonical):
+        modifier = label[: len(label) - len(canonical) - 1]
+        if len(modifier) >= 2 and " " not in modifier:
+            return True
+
+    # "<canonical> <modifier>"
+    if label.startswith(canonical + " "):
+        modifier = label[len(canonical) + 1:]
+        if len(modifier) >= 2 and " " not in modifier:
+            return True
+
+    return False

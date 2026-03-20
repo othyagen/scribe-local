@@ -23,6 +23,12 @@ from app.case_variations import generate_case_variations
 from app.case_adversarial import generate_adversarial_cases
 from app.case_scoring import score_result_against_ground_truth
 from app.case_analysis import analyze_case_results
+from app.mismatch_explainer import (
+    apply_suggestions,
+    explain_mismatches,
+    suggest_improvements,
+    summarize_mismatches,
+)
 from app.synthea_import import load_synthea_patients, convert_patients_to_cases
 
 
@@ -176,10 +182,40 @@ def build_global_analysis(groups: list[dict]) -> dict:
     return analyze_case_results(all_scored)
 
 
+def build_mismatch_report(groups: list[dict]) -> dict:
+    """Collect mismatches across all groups, summarize, and suggest fixes.
+
+    Returns:
+        Dict with ``mismatch_summary``, ``suggestions``, and
+        ``apply_preview`` (dry-run only).
+    """
+    all_mismatches: list[list[dict]] = []
+    for group in groups:
+        for entry in group.get("scored_results", []):
+            result_bundle = entry.get("result_bundle", {})
+            score = entry.get("score", {})
+            case_mismatches = explain_mismatches(result_bundle, score)
+            all_mismatches.append(case_mismatches)
+
+    summary = summarize_mismatches(all_mismatches)
+    suggestions = suggest_improvements(summary)
+    preview = apply_suggestions(suggestions, dry_run=True)
+
+    return {
+        "mismatch_summary": summary,
+        "suggestions": suggestions,
+        "apply_preview": preview,
+    }
+
+
 # ── rendering ───────────────────────────────────────────────────────
 
 
-def render_dashboard_report(groups: list[dict], global_analysis: dict) -> str:
+def render_dashboard_report(
+    groups: list[dict],
+    global_analysis: dict,
+    mismatch_report: dict | None = None,
+) -> str:
     """Render the full dashboard as a string."""
     lines: list[str] = []
     lines.append("=== EVALUATION DASHBOARD ===")
@@ -242,7 +278,77 @@ def render_dashboard_report(groups: list[dict], global_analysis: dict) -> str:
             lines.append(f"    {d['range']}  {bar} ({d['count']})")
         lines.append("")
 
+    if mismatch_report:
+        lines.extend(_render_mismatch_section(mismatch_report))
+
     return "\n".join(lines)
+
+
+# ── mismatch rendering ─────────────────────────────────────────────
+
+
+def _render_mismatch_section(report: dict) -> list[str]:
+    """Render the mismatch analysis section of the dashboard."""
+    lines: list[str] = []
+    summary = report.get("mismatch_summary", {})
+    suggestions = report.get("suggestions", [])
+    preview = report.get("apply_preview", {})
+
+    total = summary.get("total_mismatches", 0)
+    cases_with = summary.get("cases_with_mismatches", 0)
+    cases_total = summary.get("cases_total", 0)
+
+    lines.append("--- MISMATCH ANALYSIS ---")
+    lines.append(f"  total_mismatches:     {total}")
+    lines.append(f"  cases_with_mismatches: {cases_with} / {cases_total}")
+
+    by_reason = summary.get("by_reason", {})
+    if by_reason:
+        lines.append("  by_reason:")
+        for reason in sorted(by_reason, key=lambda r: -by_reason[r]):
+            lines.append(f"    {reason:<30} {by_reason[reason]}")
+
+    top_missed = summary.get("top_missed_labels", [])
+    if top_missed:
+        lines.append("  top_missed_labels:")
+        for entry in top_missed:
+            lines.append(f"    {entry['label']:<30} ({entry['count']}x)")
+
+    lines.append("")
+
+    if suggestions:
+        lines.append("--- IMPROVEMENT SUGGESTIONS ---")
+        for s in suggestions:
+            lines.append(f"  [{s['issue']}]")
+            lines.append(f"    fix: {s['suggested_fix']}")
+            labels = ", ".join(s["affected_labels"][:5])
+            if len(s["affected_labels"]) > 5:
+                labels += f" (+{len(s['affected_labels']) - 5} more)"
+            lines.append(f"    labels: {labels}")
+        lines.append("")
+
+    proposed = preview.get("proposed_changes", [])
+    skipped = preview.get("skipped_changes", [])
+
+    if proposed or skipped:
+        lines.append("--- AUTO-FIX PREVIEW (dry run) ---")
+        if proposed:
+            lines.append("  proposed (safe to apply):")
+            for p in proposed:
+                lines.append(
+                    f"    + {p['label']:<30} -> {p.get('canonical_target', '?')}"
+                )
+        if skipped:
+            lines.append(f"  skipped: {len(skipped)}")
+            reason_counts: dict[str, int] = {}
+            for sk in skipped:
+                r = sk.get("reason", "unknown")
+                reason_counts[r] = reason_counts.get(r, 0) + 1
+            for r in sorted(reason_counts, key=lambda x: -reason_counts[x]):
+                lines.append(f"    {r:<30} {reason_counts[r]}")
+        lines.append("")
+
+    return lines
 
 
 # ── main ────────────────────────────────────────────────────────────
@@ -265,9 +371,11 @@ def run_dashboard(
         run_synthea_group(synthea_path),
     ]
     global_analysis = build_global_analysis(groups)
+    mismatch_report = build_mismatch_report(groups)
     return {
         "groups": groups,
         "global_analysis": global_analysis,
+        "mismatch_report": mismatch_report,
     }
 
 
@@ -276,6 +384,7 @@ def main() -> None:
     report = render_dashboard_report(
         dashboard["groups"],
         dashboard["global_analysis"],
+        dashboard.get("mismatch_report"),
     )
     print(report)
 

@@ -16,6 +16,7 @@ from scripts.run_evaluation_dashboard import (
     run_dashboard,
     summarize_group_analysis,
     build_global_analysis,
+    build_mismatch_report,
     render_dashboard_report,
     _score_cases,
 )
@@ -233,6 +234,7 @@ class TestRunDashboard:
         dashboard = run_dashboard(case_dir=d, synthea_path=p)
         assert "groups" in dashboard
         assert "global_analysis" in dashboard
+        assert "mismatch_report" in dashboard
         assert len(dashboard["groups"]) == 4
 
     def test_group_labels(self, tmp_path):
@@ -281,6 +283,85 @@ class TestRealDataIntegration:
         dashboard = run_dashboard()
         assert dashboard["global_analysis"]["overall"]["total_cases"] >= 42
         report = render_dashboard_report(
-            dashboard["groups"], dashboard["global_analysis"]
+            dashboard["groups"],
+            dashboard["global_analysis"],
+            dashboard.get("mismatch_report"),
         )
         assert "GLOBAL SUMMARY" in report
+
+
+# ── mismatch report integration ────────────────────────────────────
+
+
+class TestBuildMismatchReport:
+    def test_returns_expected_keys(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        group = run_base_case_group(d)
+        report = build_mismatch_report([group])
+        assert "mismatch_summary" in report
+        assert "suggestions" in report
+        assert "apply_preview" in report
+
+    def test_mismatch_summary_structure(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        group = run_base_case_group(d)
+        report = build_mismatch_report([group])
+        summary = report["mismatch_summary"]
+        assert "total_mismatches" in summary
+        assert "cases_with_mismatches" in summary
+        assert "cases_total" in summary
+
+    def test_apply_preview_is_dry_run(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        group = run_base_case_group(d)
+        report = build_mismatch_report([group])
+        preview = report["apply_preview"]
+        assert "proposed_changes" in preview
+        assert "applied_changes" in preview
+        assert "skipped_changes" in preview
+        # Dry run: nothing applied.
+        assert preview["applied_changes"] == []
+
+    def test_empty_groups(self):
+        report = build_mismatch_report([])
+        assert report["mismatch_summary"]["total_mismatches"] == 0
+        assert report["suggestions"] == []
+
+    def test_cases_total_matches_scored(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        group = run_base_case_group(d)
+        report = build_mismatch_report([group])
+        assert report["mismatch_summary"]["cases_total"] == group["scored_count"]
+
+
+class TestRenderMismatchSection:
+    def test_mismatch_section_in_report(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        p = _minimal_synthea(tmp_path)
+        dashboard = run_dashboard(case_dir=d, synthea_path=p)
+        report = render_dashboard_report(
+            dashboard["groups"],
+            dashboard["global_analysis"],
+            dashboard.get("mismatch_report"),
+        )
+        assert "MISMATCH ANALYSIS" in report
+
+    def test_no_mismatch_section_when_none(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        group = run_base_case_group(d)
+        global_a = build_global_analysis([group])
+        report = render_dashboard_report([group], global_a, None)
+        assert "MISMATCH ANALYSIS" not in report
+
+    def test_report_deterministic(self, tmp_path):
+        d = _minimal_case_dir(tmp_path)
+        p = _minimal_synthea(tmp_path)
+        d1 = run_dashboard(case_dir=d, synthea_path=p)
+        d2 = run_dashboard(case_dir=d, synthea_path=p)
+        r1 = render_dashboard_report(
+            d1["groups"], d1["global_analysis"], d1.get("mismatch_report"),
+        )
+        r2 = render_dashboard_report(
+            d2["groups"], d2["global_analysis"], d2.get("mismatch_report"),
+        )
+        assert r1 == r2

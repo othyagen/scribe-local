@@ -3,9 +3,8 @@
 Maps synonym / variant labels to a single canonical form so that
 ground-truth expectations match system outputs during scoring.
 
-Delegates to :mod:`app.clinical_terminology` as the single source of
-truth for synonym resolution.  A small supplementary map covers terms
-not yet promoted to the terminology registry.
+Thin wrapper around :mod:`app.clinical_terminology` — all synonym
+knowledge lives in the terminology registry.
 
 Applied at evaluation boundaries only — never inside the reasoning
 pipeline.  Pure functions, deterministic, no I/O, no input mutation.
@@ -18,23 +17,14 @@ from app.clinical_terminology import (
     get_canonical_label as _terminology_lookup,
 )
 
-# ── supplementary synonyms ───────────────────────────────────────────
-
-# Terms not yet in the terminology registry.  Kept minimal — migrate
-# to CLINICAL_TERMS as terms are promoted.
-_EXTRA_SYNONYMS: dict[str, str] = {
-    "frequent urination": "urinary frequency",
-}
-
 # ── derived synonym map (public, for tests / inspection) ─────────────
 
-# Built from the terminology registry + extras.  Preserves the
-# LABEL_SYNONYMS export that existing tests rely on.
+# Built from the terminology registry.  Preserves the LABEL_SYNONYMS
+# export that existing tests rely on.
 LABEL_SYNONYMS: dict[str, str] = {}
 for _label, _term in CLINICAL_TERMS.items():
     for _syn in _term["synonyms"]:
         LABEL_SYNONYMS[_syn.lower()] = _label
-LABEL_SYNONYMS.update(_EXTRA_SYNONYMS)
 
 
 # ── public API ──────────────────────────────────────────────────────
@@ -55,16 +45,7 @@ def canonicalize_label(label: str) -> str:
         Canonical label if a synonym match is found, otherwise the
         original label stripped of whitespace.
     """
-    stripped = label.strip()
-
-    # Primary lookup via terminology registry
-    result = _terminology_lookup(stripped)
-    if result != stripped:
-        return result
-
-    # Supplementary lookup for terms not yet in the registry
-    key = stripped.lower()
-    return _EXTRA_SYNONYMS.get(key, stripped)
+    return _terminology_lookup(label)
 
 
 def canonicalize_labels(labels: list[str]) -> list[str]:

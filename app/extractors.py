@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from typing import Callable
 
+from app.clinical_terminology import get_canonical_label as _get_canonical_label
 from app.extractor_vocab import load_vocab
 
 # ── symptom extraction ────────────────────────────────────────────────
@@ -46,15 +47,6 @@ _DEFAULT_SYMPTOMS: list[str] = [
 
 SYMPTOM_KEYWORDS: list[str] = load_vocab("symptoms", _DEFAULT_SYMPTOMS)
 
-# Synonym map: colloquial term → canonical name.
-# Applied at extraction time so downstream modules always see canonical names.
-_SYMPTOM_SYNONYMS: dict[str, str] = {
-    "painful urination": "dysuria",
-    "shortness of breath": "dyspnea",
-    "short of breath": "dyspnea",
-    "breathlessness": "dyspnea",
-    "difficulty breathing": "dyspnea",
-}
 
 # Pre-compile symptom patterns (longest first for multi-word matches)
 _SYMPTOM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -67,12 +59,12 @@ def extract_symptoms(text: str) -> list[str]:
     """Extract symptom mentions from text.
 
     Returns unique symptoms in first-occurrence order, lowercase.
-    Synonym terms are canonicalised via ``_SYMPTOM_SYNONYMS``.
+    Synonym terms are canonicalised via :func:`clinical_terminology.get_canonical_label`.
     """
     seen: set[str] = set()
     results: list[str] = []
     for pattern, keyword in _SYMPTOM_PATTERNS:
-        canonical = _SYMPTOM_SYNONYMS.get(keyword, keyword)
+        canonical = _get_canonical_label(keyword)
         if canonical in seen:
             continue
         if pattern.search(text):

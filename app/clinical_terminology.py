@@ -85,6 +85,15 @@ CLINICAL_TERMS: dict[str, dict] = {
         "red_flag": True,
         "snomed_code": "66857006",
     },
+    "urinary frequency": {
+        "display": "Urinary frequency",
+        "type": "symptom",
+        "synonyms": [
+            "frequent urination",
+        ],
+        "red_flag": False,
+        "snomed_code": "162116003",
+    },
 }
 
 

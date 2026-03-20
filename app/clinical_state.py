@@ -59,6 +59,7 @@ from app.evidence_strength import annotate_evidence_strength
 from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
 from app.hypothesis_prioritization import prioritize_hypotheses
+from app.hypothesis_evidence_gaps import identify_evidence_gaps
 from app.clinical_interaction import derive_next_questions
 
 
@@ -188,6 +189,14 @@ def build_clinical_state(
     state["hypothesis_prioritization"] = prioritize_hypotheses(
         state["hypotheses"],
         state["derived"].get("red_flags", []),
+    )
+
+    # Hypothesis evidence gaps — missing evidence and targeted questions
+    state["hypothesis_evidence_gaps"] = identify_evidence_gaps(
+        state["hypotheses"],
+        state["hypothesis_prioritization"],
+        state["observations"],
+        state["negations"],
     )
 
     # Clinical summary — format-neutral structured summary

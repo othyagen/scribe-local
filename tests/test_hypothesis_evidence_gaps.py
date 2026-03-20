@@ -89,6 +89,9 @@ class TestRegistry:
                 assert "question" in entry and entry["question"], (
                     f"Missing/empty question in {condition}"
                 )
+                assert "reason" in entry and entry["reason"], (
+                    f"Missing/empty reason in {condition}/{entry.get('finding')}"
+                )
 
     def test_all_keys_lowercase(self):
         for key in CONDITION_FINDINGS:
@@ -271,15 +274,15 @@ class TestOrdering:
         ]
         result = identify_evidence_gaps(hyps, prio, [], [])
         questions = result["suggested_questions"]
-        pneumonia_q = [q for q in questions if q["hypothesis"] == "Pneumonia"]
-        migraine_q = [q for q in questions if q["hypothesis"] == "Migraine"]
+        pneumonia_q = [q for q in questions if q["target_hypothesis"] == "Pneumonia"]
+        migraine_q = [q for q in questions if q["target_hypothesis"] == "Migraine"]
         assert len(pneumonia_q) > 0
         assert len(migraine_q) > 0
         first_pneumonia = next(
-            i for i, q in enumerate(questions) if q["hypothesis"] == "Pneumonia"
+            i for i, q in enumerate(questions) if q["target_hypothesis"] == "Pneumonia"
         )
         first_migraine = next(
-            i for i, q in enumerate(questions) if q["hypothesis"] == "Migraine"
+            i for i, q in enumerate(questions) if q["target_hypothesis"] == "Migraine"
         )
         assert first_pneumonia < first_migraine
 
@@ -334,9 +337,27 @@ class TestOutputStructure:
         assert len(result["suggested_questions"]) > 0
         q = result["suggested_questions"][0]
         assert "question" in q
-        assert "hypothesis" in q
-        assert "priority_class" in q
+        assert "target_hypothesis" in q
         assert "target_finding" in q
+        assert "priority_class" in q
+        assert "reason" in q
+
+    def test_reason_is_non_empty_string(self):
+        hyps = [_hyp("Meningitis", rank=1)]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        for q in result["suggested_questions"]:
+            assert isinstance(q["reason"], str)
+            assert len(q["reason"]) > 0
+
+    def test_reason_mentions_finding_or_hypothesis(self):
+        """Reason should be clinically relevant to the finding or hypothesis."""
+        hyps = [_hyp("Pulmonary embolism", rank=1)]
+        prio = [_prio("hyp_0001", "Pulmonary embolism", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        for q in result["suggested_questions"]:
+            # Reason should be substantive, not a generic placeholder.
+            assert len(q["reason"]) >= 20
 
 
 # ── determinism ──────────────────────────────────────────────────────

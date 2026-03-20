@@ -58,6 +58,7 @@ from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 from app.evidence_strength import annotate_evidence_strength
 from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
+from app.hypothesis_prioritization import prioritize_hypotheses
 from app.clinical_interaction import derive_next_questions
 
 
@@ -181,6 +182,12 @@ def build_clinical_state(
     # Hypothesis explanations — transparent reasoning from evidence
     state["hypotheses"] = build_hypothesis_explanations(
         state["hypotheses"], state["observations"],
+    )
+
+    # Hypothesis prioritization — optional must-not-miss safety view
+    state["hypothesis_prioritization"] = prioritize_hypotheses(
+        state["hypotheses"],
+        state["derived"].get("red_flags", []),
     )
 
     # Clinical summary — format-neutral structured summary

@@ -39,6 +39,7 @@ from app.diagnostic_hypotheses import build_diagnostic_hypotheses
 from app.evidence_strength import annotate_evidence_strength
 from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
+from app.hypothesis_prioritization import prioritize_hypotheses
 from app.clinical_summary import build_clinical_summary
 from app.clinical_summary_views import build_summary_views
 from app.clinical_insights import derive_clinical_insights
@@ -160,6 +161,12 @@ def apply_update(
     # Hypothesis explanations.
     state["hypotheses"] = build_hypothesis_explanations(
         state["hypotheses"], state["observations"],
+    )
+
+    # Hypothesis prioritization — optional must-not-miss safety view.
+    state["hypothesis_prioritization"] = prioritize_hypotheses(
+        state["hypotheses"],
+        state["derived"].get("red_flags", []),
     )
 
     # Clinical summary.

@@ -38,6 +38,7 @@ _EXPECTED_KEYS = {
     "symptom_groups",
     "problems",
     "hypotheses",
+    "hypothesis_prioritization",
     "clinical_summary",
     "summary_views",
     "clinical_insights",

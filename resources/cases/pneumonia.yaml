@@ -29,7 +29,8 @@ config:
 ground_truth:
   expected_hypotheses:
     - Pneumonia
-  red_flags: []
+  red_flags:
+    - dyspnea
   key_findings:
     - cough
     - fever

@@ -38,7 +38,8 @@ config:
 
 ground_truth:
   expected_hypotheses: []
-  red_flags: []
+  red_flags:
+    - chest pain
   key_findings:
     - chest pain
 

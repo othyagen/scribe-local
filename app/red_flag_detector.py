@@ -114,7 +114,7 @@ def _dyspnea_flag(
         return None
     return {
         "flag": "dyspnea_flag",
-        "label": "Shortness of breath",
+        "label": "Dyspnea",
         "severity": "moderate",
         "evidence": ["dyspnea"],
     }

@@ -9,6 +9,7 @@ Pure functions — no I/O, no ML, no input mutation, deterministic.
 
 from __future__ import annotations
 
+from app.canonicalization import canonicalize_ground_truth
 from app.case_system import run_case, run_case_script
 
 
@@ -25,7 +26,8 @@ def score_result_against_ground_truth(result_bundle: dict) -> dict:
     Returns:
         Structured score dict with stable schema.
     """
-    gt = result_bundle.get("ground_truth") or {}
+    gt_raw = result_bundle.get("ground_truth") or {}
+    gt = canonicalize_ground_truth(gt_raw)
     state = result_bundle.get("session", {}).get("clinical_state", {})
     has_gt = bool(
         gt.get("expected_hypotheses")

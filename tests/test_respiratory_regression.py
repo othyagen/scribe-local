@@ -108,7 +108,7 @@ class TestRespiratoryRedFlags:
         state = self._state_with_symptoms(["dyspnea"])
         flags = detect_red_flags(state)
         labels = [f["label"] for f in flags]
-        assert "Shortness of breath" in labels
+        assert "Dyspnea" in labels
 
     def test_chest_pain_red_flag(self):
         state = self._state_with_symptoms(["chest pain"])
@@ -120,7 +120,7 @@ class TestRespiratoryRedFlags:
         state = self._state_with_symptoms(["headache"])
         flags = detect_red_flags(state)
         labels = [f["label"] for f in flags]
-        assert "Shortness of breath" not in labels
+        assert "Dyspnea" not in labels
         assert "Chest pain" not in labels
 
 
@@ -148,6 +148,12 @@ class TestPneumoniaSeedCase:
         score = score_result_against_ground_truth(result)
         hyp = score["hypotheses"]
         assert "Pneumonia" in hyp["present"]
+
+    def test_red_flag_detected(self, pneumonia_case):
+        result = run_case(pneumonia_case)
+        score = score_result_against_ground_truth(result)
+        rf = score["red_flags"]
+        assert rf["hit_rate"] == 1.0, f"missing: {rf['missing']}"
 
     def test_overall_score_improvement(self, pneumonia_case):
         result = run_case(pneumonia_case)

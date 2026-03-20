@@ -3,34 +3,38 @@
 Maps synonym / variant labels to a single canonical form so that
 ground-truth expectations match system outputs during scoring.
 
+Delegates to :mod:`app.clinical_terminology` as the single source of
+truth for synonym resolution.  A small supplementary map covers terms
+not yet promoted to the terminology registry.
+
 Applied at evaluation boundaries only — never inside the reasoning
 pipeline.  Pure functions, deterministic, no I/O, no input mutation.
 """
 
 from __future__ import annotations
 
-import copy
+from app.clinical_terminology import (
+    CLINICAL_TERMS,
+    get_canonical_label as _terminology_lookup,
+)
 
-# ── synonym map ─────────────────────────────────────────────────────
+# ── supplementary synonyms ───────────────────────────────────────────
 
-# Explicit mapping: variant → canonical label.
-# Keys must be lowercase.  Values are the canonical form.
-# Extend this dict to cover new synonym families.
-LABEL_SYNONYMS: dict[str, str] = {
-    # Respiratory
-    "shortness of breath": "dyspnea",
-    "short of breath": "dyspnea",
-    "breathlessness": "dyspnea",
-    "difficulty breathing": "dyspnea",
-    "sob": "dyspnea",
-    # Urinary
-    "painful urination": "dysuria",
-    "burning urination": "dysuria",
+# Terms not yet in the terminology registry.  Kept minimal — migrate
+# to CLINICAL_TERMS as terms are promoted.
+_EXTRA_SYNONYMS: dict[str, str] = {
     "frequent urination": "urinary frequency",
-    # Cardiac
-    "chest discomfort": "chest pain",
-    "chest tightness": "chest pain",
 }
+
+# ── derived synonym map (public, for tests / inspection) ─────────────
+
+# Built from the terminology registry + extras.  Preserves the
+# LABEL_SYNONYMS export that existing tests rely on.
+LABEL_SYNONYMS: dict[str, str] = {}
+for _label, _term in CLINICAL_TERMS.items():
+    for _syn in _term["synonyms"]:
+        LABEL_SYNONYMS[_syn.lower()] = _label
+LABEL_SYNONYMS.update(_EXTRA_SYNONYMS)
 
 
 # ── public API ──────────────────────────────────────────────────────
@@ -52,8 +56,15 @@ def canonicalize_label(label: str) -> str:
         original label stripped of whitespace.
     """
     stripped = label.strip()
+
+    # Primary lookup via terminology registry
+    result = _terminology_lookup(stripped)
+    if result != stripped:
+        return result
+
+    # Supplementary lookup for terms not yet in the registry
     key = stripped.lower()
-    return LABEL_SYNONYMS.get(key, stripped)
+    return _EXTRA_SYNONYMS.get(key, stripped)
 
 
 def canonicalize_labels(labels: list[str]) -> list[str]:

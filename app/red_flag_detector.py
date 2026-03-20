@@ -3,12 +3,18 @@
 Identifies high-risk clinical patterns from structured data using
 rule-based exact matching against symptom representations.
 
+Simple single-symptom flags are driven by
+:mod:`app.clinical_terminology`; compound multi-symptom patterns
+remain as explicit rule functions.
+
 Additive only — does not modify any existing structured fields.
 
 No ML, no LLM, no external API calls.
 """
 
 from __future__ import annotations
+
+from app.clinical_terminology import get_term as _get_term, is_red_flag as _is_red_flag
 
 
 def detect_red_flags(clinical_state: dict) -> list[dict]:
@@ -30,9 +36,16 @@ def detect_red_flags(clinical_state: dict) -> list[dict]:
     matched: list[dict] = []
     seen: set[str] = set()
 
-    for rule in _RULES:
+    # Compound / multi-symptom pattern rules
+    for rule in _COMPOUND_RULES:
         result = rule(sym_set, rep_index)
         if result is not None and result["flag"] not in seen:
+            seen.add(result["flag"])
+            matched.append(result)
+
+    # Simple single-symptom red flags from terminology registry
+    for result in _terminology_red_flags(sym_set):
+        if result["flag"] not in seen:
             seen.add(result["flag"])
             matched.append(result)
 
@@ -57,7 +70,31 @@ def _build_indexes(
     return sym_set, rep_index
 
 
-# ── rule functions ───────────────────────────────────────────────
+# ── terminology-driven simple flags ──────────────────────────────
+
+# Terms that warrant "high" severity when present alone.
+_HIGH_SEVERITY_TERMS: frozenset[str] = frozenset({"hemoptysis", "syncope"})
+
+
+def _terminology_red_flags(sym_set: set[str]) -> list[dict]:
+    """Generate simple red flag dicts for symptoms flagged by clinical_terminology."""
+    results: list[dict] = []
+    for sym in sorted(sym_set):  # sorted for determinism
+        if not _is_red_flag(sym):
+            continue
+        term = _get_term(sym)
+        label = term["display"] if term else sym.title()
+        severity = "high" if sym in _HIGH_SEVERITY_TERMS else "moderate"
+        results.append({
+            "flag": sym.replace(" ", "_") + "_flag",
+            "label": label,
+            "severity": severity,
+            "evidence": [sym],
+        })
+    return results
+
+
+# ── compound rule functions ──────────────────────────────────────
 
 
 def _sudden_severe_headache(
@@ -106,52 +143,11 @@ def _chest_pain_with_dyspnea(
     }
 
 
-def _dyspnea_flag(
-    sym_set: set[str],
-    rep_index: dict[str, dict],
-) -> dict | None:
-    if "dyspnea" not in sym_set:
-        return None
-    return {
-        "flag": "dyspnea_flag",
-        "label": "Dyspnea",
-        "severity": "moderate",
-        "evidence": ["dyspnea"],
-    }
-
-
-def _chest_pain_flag(
-    sym_set: set[str],
-    rep_index: dict[str, dict],
-) -> dict | None:
-    if "chest pain" not in sym_set:
-        return None
-    return {
-        "flag": "chest_pain_flag",
-        "label": "Chest pain",
-        "severity": "moderate",
-        "evidence": ["chest pain"],
-    }
-
-
-def _hemoptysis_flag(
-    sym_set: set[str],
-    rep_index: dict[str, dict],
-) -> dict | None:
-    if "hemoptysis" not in sym_set:
-        return None
-    return {
-        "flag": "hemoptysis_flag",
-        "label": "Hemoptysis",
-        "severity": "high",
-        "evidence": ["hemoptysis"],
-    }
-
-
 def _suicidal_ideation_flag(
     sym_set: set[str],
     rep_index: dict[str, dict],
 ) -> dict | None:
+    # Not yet in clinical_terminology registry — kept as explicit rule.
     if "suicidal ideation" not in sym_set:
         return None
     return {
@@ -185,13 +181,10 @@ def _systemic_malignancy_pattern(
     }
 
 
-# Rule registry — order determines output order when multiple match.
-_RULES = [
+# Compound rules — order determines output order when multiple match.
+_COMPOUND_RULES = [
     _sudden_severe_headache,
     _chest_pain_with_dyspnea,
-    _dyspnea_flag,
-    _chest_pain_flag,
-    _hemoptysis_flag,
     _suicidal_ideation_flag,
     _systemic_malignancy_pattern,
 ]

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.canonicalization import canonicalize_ground_truth
 from app.case_system import run_case, run_case_script
+from app.case_validation import validate_ground_truth
 
 
 # ── scoring ─────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ def score_result_against_ground_truth(result_bundle: dict) -> dict:
         Structured score dict with stable schema.
     """
     gt_raw = result_bundle.get("ground_truth") or {}
+    gt_validation = validate_ground_truth(gt_raw)
     gt = canonicalize_ground_truth(gt_raw)
     state = result_bundle.get("session", {}).get("clinical_state", {})
     has_gt = bool(
@@ -42,6 +44,7 @@ def score_result_against_ground_truth(result_bundle: dict) -> dict:
     return {
         "case_id": result_bundle.get("case_id", ""),
         "has_ground_truth": has_gt,
+        "gt_validation": gt_validation,
         "hypotheses": hyp_score,
         "red_flags": rf_score,
         "key_findings": kf_score,

@@ -84,8 +84,8 @@ class TestScoreStructure:
         result = run_case(_minimal_case())
         score = score_result_against_ground_truth(result)
         assert set(score.keys()) == {
-            "case_id", "has_ground_truth", "hypotheses",
-            "red_flags", "key_findings", "summary",
+            "case_id", "has_ground_truth", "gt_validation",
+            "hypotheses", "red_flags", "key_findings", "summary",
         }
 
     def test_hypotheses_keys(self):

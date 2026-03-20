@@ -1,8 +1,11 @@
-"""Mismatch explanation for evaluation debugging.
+"""Mismatch explanation and aggregation for evaluation debugging.
 
 Produces structured reasons for why expected ground-truth labels
 did not match detected outputs.  Compares raw, canonicalized, and
 normalized forms to pinpoint the failure mode.
+
+:func:`summarize_mismatches` aggregates across multiple cases to
+surface the most frequent failure patterns.
 
 Pure functions — no I/O, no ML, no input mutation, deterministic.
 """
@@ -189,3 +192,58 @@ def _diagnose_missing(
     else:
         detail = f"'{raw_label}' not found in detected: {actual_list}"
     return ("not_detected", detail)
+
+
+# ── aggregation ──────────────────────────────────────────────────────
+
+
+def summarize_mismatches(
+    all_mismatches: list[list[dict]],
+    top_n: int = 5,
+) -> dict:
+    """Aggregate mismatch explanations across multiple cases.
+
+    Args:
+        all_mismatches: list of per-case mismatch lists (each from
+            :func:`explain_mismatches`).
+        top_n: number of top items to include in ranked lists.
+
+    Returns:
+        Summary dict with counts and ranked lists.
+    """
+    reason_counts: dict[str, int] = {}
+    label_counts: dict[str, int] = {}
+    field_counts: dict[str, int] = {}
+    synonym_labels: dict[str, int] = {}
+    total = 0
+
+    for case_mismatches in all_mismatches:
+        for entry in case_mismatches:
+            total += 1
+            reason = entry.get("reason", "unknown")
+            label = entry.get("label", "")
+            field = entry.get("field", "")
+
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            label_counts[label] = label_counts.get(label, 0) + 1
+            field_counts[field] = field_counts.get(field, 0) + 1
+
+            if reason in ("synonym_mismatch", "canonical_mismatch"):
+                synonym_labels[label] = synonym_labels.get(label, 0) + 1
+
+    return {
+        "total_mismatches": total,
+        "cases_with_mismatches": sum(1 for m in all_mismatches if m),
+        "cases_total": len(all_mismatches),
+        "by_reason": reason_counts,
+        "by_field": field_counts,
+        "top_missed_labels": _top_n(label_counts, top_n),
+        "top_synonym_issues": _top_n(synonym_labels, top_n),
+        "top_reasons": _top_n(reason_counts, top_n),
+    }
+
+
+def _top_n(counts: dict[str, int], n: int) -> list[dict]:
+    """Return top N entries sorted by count desc, then alphabetically."""
+    sorted_items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    return [{"label": k, "count": v} for k, v in sorted_items[:n]]

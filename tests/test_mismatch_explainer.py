@@ -1,10 +1,10 @@
-"""Tests for mismatch explanation module."""
+"""Tests for mismatch explanation and aggregation module."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.mismatch_explainer import explain_mismatches
+from app.mismatch_explainer import explain_mismatches, summarize_mismatches
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -220,4 +220,138 @@ class TestDeterminism:
         score = _score(kf_missing=["fever", "shortness of breath"])
         r1 = explain_mismatches(bundle, score)
         r2 = explain_mismatches(bundle, score)
+        assert r1 == r2
+
+
+# ── summarize_mismatches ─────────────────────────────────────────────
+
+
+def _m(field: str, label: str, reason: str, canonical: str = "",
+       detail: str = "") -> dict:
+    """Build a mismatch entry for aggregation tests."""
+    return {
+        "field": field,
+        "label": label,
+        "canonical": canonical or label,
+        "reason": reason,
+        "detail": detail or f"{label} not found",
+    }
+
+
+class TestSummarizeMismatches:
+    def test_empty_input(self):
+        result = summarize_mismatches([])
+        assert result["total_mismatches"] == 0
+        assert result["cases_with_mismatches"] == 0
+        assert result["cases_total"] == 0
+
+    def test_no_mismatches(self):
+        result = summarize_mismatches([[], [], []])
+        assert result["total_mismatches"] == 0
+        assert result["cases_with_mismatches"] == 0
+        assert result["cases_total"] == 3
+
+    def test_single_case_single_mismatch(self):
+        mismatches = [[_m("key_findings", "fever", "not_detected")]]
+        result = summarize_mismatches(mismatches)
+        assert result["total_mismatches"] == 1
+        assert result["cases_with_mismatches"] == 1
+        assert result["by_reason"] == {"not_detected": 1}
+        assert result["by_field"] == {"key_findings": 1}
+
+    def test_counts_aggregate_across_cases(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected")],
+            [_m("key_findings", "fever", "not_detected"),
+             _m("red_flags", "dyspnea", "not_detected")],
+            [],
+        ]
+        result = summarize_mismatches(mismatches)
+        assert result["total_mismatches"] == 3
+        assert result["cases_with_mismatches"] == 2
+        assert result["cases_total"] == 3
+        assert result["by_reason"]["not_detected"] == 3
+        assert result["by_field"]["key_findings"] == 2
+        assert result["by_field"]["red_flags"] == 1
+
+    def test_top_missed_labels(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "cough", "not_detected")],
+            [_m("key_findings", "fever", "not_detected")],
+            [_m("key_findings", "fever", "not_detected")],
+        ]
+        result = summarize_mismatches(mismatches)
+        top = result["top_missed_labels"]
+        assert top[0]["label"] == "fever"
+        assert top[0]["count"] == 3
+        assert top[1]["label"] == "cough"
+        assert top[1]["count"] == 1
+
+    def test_top_synonym_issues(self):
+        mismatches = [
+            [_m("key_findings", "shortness of breath", "canonical_mismatch",
+                canonical="dyspnea")],
+            [_m("key_findings", "shortness of breath", "canonical_mismatch",
+                canonical="dyspnea")],
+            [_m("key_findings", "chest discomfort", "synonym_mismatch",
+                canonical="chest pain")],
+            [_m("key_findings", "fever", "not_detected")],
+        ]
+        result = summarize_mismatches(mismatches)
+        syn = result["top_synonym_issues"]
+        assert syn[0]["label"] == "shortness of breath"
+        assert syn[0]["count"] == 2
+        assert syn[1]["label"] == "chest discomfort"
+        assert syn[1]["count"] == 1
+        # "fever" is not_detected, not a synonym issue
+        labels = [s["label"] for s in syn]
+        assert "fever" not in labels
+
+    def test_top_reasons(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "sob", "canonical_mismatch")],
+            [_m("key_findings", "cough", "not_detected"),
+             _m("red_flags", "chest", "partial_overlap")],
+        ]
+        result = summarize_mismatches(mismatches)
+        top = result["top_reasons"]
+        assert top[0]["label"] == "not_detected"
+        assert top[0]["count"] == 2
+
+    def test_top_n_limits(self):
+        mismatches = [[
+            _m("key_findings", f"label_{i}", "not_detected")
+            for i in range(10)
+        ]]
+        result = summarize_mismatches(mismatches, top_n=3)
+        assert len(result["top_missed_labels"]) == 3
+
+    def test_top_n_alphabetical_tiebreak(self):
+        mismatches = [
+            [_m("key_findings", "beta", "not_detected"),
+             _m("key_findings", "alpha", "not_detected")],
+        ]
+        result = summarize_mismatches(mismatches, top_n=5)
+        top = result["top_missed_labels"]
+        assert top[0]["label"] == "alpha"
+        assert top[1]["label"] == "beta"
+
+    def test_summary_keys(self):
+        result = summarize_mismatches([[_m("key_findings", "fever", "not_detected")]])
+        expected_keys = {
+            "total_mismatches", "cases_with_mismatches", "cases_total",
+            "by_reason", "by_field", "top_missed_labels",
+            "top_synonym_issues", "top_reasons",
+        }
+        assert set(result.keys()) == expected_keys
+
+    def test_deterministic(self):
+        mismatches = [
+            [_m("key_findings", "fever", "not_detected"),
+             _m("key_findings", "sob", "canonical_mismatch")],
+        ]
+        r1 = summarize_mismatches(mismatches)
+        r2 = summarize_mismatches(mismatches)
         assert r1 == r2

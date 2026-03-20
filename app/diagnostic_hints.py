@@ -15,9 +15,10 @@ import re
 
 RULES: list[dict] = [
     {
-        "symptoms": ["fever", "cough", "shortness of breath"],
+        "symptoms": ["fever", "cough", "dyspnea"],
         "condition": "Pneumonia",
         "snomed": "233604007",
+        "min_required": 2,
     },
     {
         "symptoms": ["headache", "neck stiffness", "fever"],
@@ -25,7 +26,7 @@ RULES: list[dict] = [
         "snomed": "7180009",
     },
     {
-        "symptoms": ["chest pain", "shortness of breath"],
+        "symptoms": ["chest pain", "dyspnea"],
         "condition": "Acute coronary syndrome",
         "snomed": "394659003",
     },
@@ -121,8 +122,10 @@ def generate_diagnostic_hints(
     results: list[dict] = []
     for rule in RULES:
         required = {s.lower() for s in rule["symptoms"]}
-        if required <= active_symptoms:
-            evidence = sorted(required & active_symptoms)
+        matched = required & active_symptoms
+        min_req = rule.get("min_required", len(required))
+        if len(matched) >= min_req:
+            evidence = sorted(matched)
             results.append({
                 "condition": rule["condition"],
                 "snomed_code": rule["snomed"],

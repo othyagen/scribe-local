@@ -106,6 +106,34 @@ def _chest_pain_with_dyspnea(
     }
 
 
+def _dyspnea_flag(
+    sym_set: set[str],
+    rep_index: dict[str, dict],
+) -> dict | None:
+    if "dyspnea" not in sym_set:
+        return None
+    return {
+        "flag": "dyspnea_flag",
+        "label": "Shortness of breath",
+        "severity": "moderate",
+        "evidence": ["dyspnea"],
+    }
+
+
+def _chest_pain_flag(
+    sym_set: set[str],
+    rep_index: dict[str, dict],
+) -> dict | None:
+    if "chest pain" not in sym_set:
+        return None
+    return {
+        "flag": "chest_pain_flag",
+        "label": "Chest pain",
+        "severity": "moderate",
+        "evidence": ["chest pain"],
+    }
+
+
 def _hemoptysis_flag(
     sym_set: set[str],
     rep_index: dict[str, dict],
@@ -161,6 +189,8 @@ def _systemic_malignancy_pattern(
 _RULES = [
     _sudden_severe_headache,
     _chest_pain_with_dyspnea,
+    _dyspnea_flag,
+    _chest_pain_flag,
     _hemoptysis_flag,
     _suicidal_ideation_flag,
     _systemic_malignancy_pattern,

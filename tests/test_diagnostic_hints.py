@@ -12,14 +12,28 @@ from app.export_clinical_note import build_clinical_note
 
 
 class TestRuleMatching:
-    def test_pneumonia_rule(self):
-        symptoms = ["fever", "cough", "shortness of breath"]
+    def test_pneumonia_rule_all_three(self):
+        symptoms = ["fever", "cough", "dyspnea"]
         hints = generate_diagnostic_hints(symptoms)
         conditions = [h["condition"] for h in hints]
         assert "Pneumonia" in conditions
         pneumonia = next(h for h in hints if h["condition"] == "Pneumonia")
         assert pneumonia["snomed_code"] == "233604007"
-        assert set(pneumonia["evidence"]) == {"fever", "cough", "shortness of breath"}
+        assert set(pneumonia["evidence"]) == {"fever", "cough", "dyspnea"}
+
+    def test_pneumonia_rule_two_of_three(self):
+        """Pneumonia fires with any 2 of fever, cough, dyspnea."""
+        for pair in [["fever", "cough"], ["cough", "dyspnea"], ["fever", "dyspnea"]]:
+            hints = generate_diagnostic_hints(pair)
+            conditions = [h["condition"] for h in hints]
+            assert "Pneumonia" in conditions, f"Pneumonia should fire for {pair}"
+
+    def test_pneumonia_single_symptom_does_not_trigger(self):
+        """A single symptom should not trigger pneumonia."""
+        for sym in ["fever", "cough", "dyspnea"]:
+            hints = generate_diagnostic_hints([sym])
+            conditions = [h["condition"] for h in hints]
+            assert "Pneumonia" not in conditions
 
     def test_meningitis_rule(self):
         symptoms = ["headache", "neck stiffness", "fever"]
@@ -30,8 +44,8 @@ class TestRuleMatching:
         assert meningitis["snomed_code"] == "7180009"
 
     def test_partial_match_does_not_trigger(self):
-        """Only fever+cough — missing 'shortness of breath' for pneumonia."""
-        symptoms = ["fever", "cough"]
+        """Only fever — missing both cough and dyspnea for pneumonia."""
+        symptoms = ["fever"]
         hints = generate_diagnostic_hints(symptoms)
         conditions = [h["condition"] for h in hints]
         assert "Pneumonia" not in conditions
@@ -47,7 +61,7 @@ class TestRuleMatching:
 
     def test_multiple_rules_triggered(self):
         """Symptoms matching multiple rules should return all of them."""
-        symptoms = ["fever", "cough", "shortness of breath", "fatigue",
+        symptoms = ["fever", "cough", "dyspnea", "fatigue",
                      "headache", "nausea", "vomiting"]
         hints = generate_diagnostic_hints(symptoms)
         conditions = {h["condition"] for h in hints}
@@ -78,13 +92,13 @@ class TestRuleMatching:
         assert "Urinary tract infection" not in conditions
 
     def test_case_insensitive(self):
-        symptoms = ["Fever", "Cough", "Shortness of Breath"]
+        symptoms = ["Fever", "Cough", "Dyspnea"]
         hints = generate_diagnostic_hints(symptoms)
         conditions = [h["condition"] for h in hints]
         assert "Pneumonia" in conditions
 
     def test_evidence_sorted_alphabetically(self):
-        symptoms = ["shortness of breath", "fever", "cough"]
+        symptoms = ["dyspnea", "fever", "cough"]
         hints = generate_diagnostic_hints(symptoms)
         pneumonia = next(h for h in hints if h["condition"] == "Pneumonia")
         assert pneumonia["evidence"] == sorted(pneumonia["evidence"])
@@ -103,9 +117,9 @@ class TestRuleMatching:
 
 class TestNegationSuppression:
     def test_negated_symptom_blocks_rule(self):
-        """If a required symptom is negated, rule should not trigger."""
-        symptoms = ["fever", "cough", "shortness of breath"]
-        negations = ["No fever"]
+        """If enough required symptoms are negated, rule should not trigger."""
+        symptoms = ["fever", "cough", "dyspnea"]
+        negations = ["No fever", "No dyspnea"]
         hints = generate_diagnostic_hints(symptoms, negations)
         conditions = [h["condition"] for h in hints]
         assert "Pneumonia" not in conditions
@@ -126,11 +140,11 @@ class TestNegationSuppression:
 
     def test_negation_only_removes_negated_symptom(self):
         """Non-negated symptoms still contribute to other rules."""
-        symptoms = ["fever", "cough", "shortness of breath", "sore throat"]
-        negations = ["No shortness of breath"]
+        symptoms = ["fever", "cough", "dyspnea", "sore throat"]
+        negations = ["No dyspnea", "No cough"]
         hints = generate_diagnostic_hints(symptoms, negations)
         conditions = [h["condition"] for h in hints]
-        # Pneumonia blocked (needs shortness of breath), but pharyngitis ok
+        # Pneumonia blocked (only fever remains), but pharyngitis ok
         assert "Pneumonia" not in conditions
         assert "Pharyngitis" in conditions
 

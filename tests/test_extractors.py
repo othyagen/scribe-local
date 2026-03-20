@@ -39,7 +39,7 @@ class TestSymptomExtraction:
 
     def test_multiword_symptom(self):
         result = extract_symptoms("reports shortness of breath and chest pain")
-        assert "shortness of breath" in result
+        assert "dyspnea" in result  # canonicalised from "shortness of breath"
         assert "chest pain" in result
 
     def test_unique_results(self):
@@ -74,6 +74,32 @@ class TestSymptomExtraction:
         """'painful urination' should match as multi-word, not extract bare 'pain'."""
         result = extract_symptoms("patient reports painful urination")
         assert "pain" not in result
+
+    def test_shortness_of_breath_canonicalised_to_dyspnea(self):
+        result = extract_symptoms("patient has shortness of breath")
+        assert "dyspnea" in result
+        assert "shortness of breath" not in result
+
+    def test_short_of_breath_canonicalised_to_dyspnea(self):
+        result = extract_symptoms("feels more short of breath today")
+        assert "dyspnea" in result
+
+    def test_difficulty_breathing_canonicalised_to_dyspnea(self):
+        result = extract_symptoms("patient has difficulty breathing")
+        assert "dyspnea" in result
+
+    def test_breathlessness_canonicalised_to_dyspnea(self):
+        result = extract_symptoms("reports breathlessness")
+        assert "dyspnea" in result
+
+    def test_dyspnea_direct(self):
+        result = extract_symptoms("patient presents with dyspnea")
+        assert result == ["dyspnea"]
+
+    def test_dyspnea_synonym_deduplicates(self):
+        """Multiple synonym forms should produce single 'dyspnea'."""
+        result = extract_symptoms("shortness of breath and dyspnea noted")
+        assert result.count("dyspnea") == 1
 
 
 # ── negation extraction ──────────────────────────────────────────────

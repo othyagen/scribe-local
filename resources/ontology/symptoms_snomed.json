@@ -176,6 +176,18 @@
         "display": "Cough",
         "type": "symptom"
     },
+    "breathlessness": {
+        "system": "SNOMED",
+        "code": "267036007",
+        "display": "Dyspnea",
+        "type": "symptom"
+    },
+    "difficulty breathing": {
+        "system": "SNOMED",
+        "code": "267036007",
+        "display": "Dyspnea",
+        "type": "symptom"
+    },
     "dyspnea": {
         "system": "SNOMED",
         "code": "267036007",
@@ -186,6 +198,12 @@
         "system": "SNOMED",
         "code": "66857006",
         "display": "Hemoptysis",
+        "type": "symptom"
+    },
+    "short of breath": {
+        "system": "SNOMED",
+        "code": "267036007",
+        "display": "Dyspnea",
         "type": "symptom"
     },
     "shortness of breath": {

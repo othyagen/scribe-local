@@ -50,6 +50,10 @@ SYMPTOM_KEYWORDS: list[str] = load_vocab("symptoms", _DEFAULT_SYMPTOMS)
 # Applied at extraction time so downstream modules always see canonical names.
 _SYMPTOM_SYNONYMS: dict[str, str] = {
     "painful urination": "dysuria",
+    "shortness of breath": "dyspnea",
+    "short of breath": "dyspnea",
+    "breathlessness": "dyspnea",
+    "difficulty breathing": "dyspnea",
 }
 
 # Pre-compile symptom patterns (longest first for multi-word matches)

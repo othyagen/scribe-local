@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from collections import Counter
+
 from scripts.run_evaluation_dashboard import (
     run_base_case_group,
     run_variation_group,
@@ -19,6 +21,11 @@ from scripts.run_evaluation_dashboard import (
     build_mismatch_report,
     render_dashboard_report,
     _score_cases,
+    _collect_encounter_data,
+    _render_encounter_preview,
+    _render_combined_hypotheses,
+    _render_evidence_gaps,
+    _render_suggested_questions,
 )
 from app.case_system import validate_case
 from app.case_analysis import analyze_case_results
@@ -365,3 +372,209 @@ class TestRenderMismatchSection:
             d2["groups"], d2["global_analysis"], d2.get("mismatch_report"),
         )
         assert r1 == r2
+
+
+# ── encounter data collection ────────────────────────────────────
+
+
+def _encounter_output(
+    key_findings=None, red_flags=None, hypotheses=None, combined_hypotheses=None,
+):
+    return {
+        "key_findings": key_findings or [],
+        "red_flags": red_flags or [],
+        "hypotheses": hypotheses or [],
+        "combined_hypotheses": combined_hypotheses or {
+            "must_not_miss": [], "most_likely": [], "less_likely": [],
+        },
+    }
+
+
+def _scored_entry(encounter_output=None, evidence_gaps=None):
+    """Build a minimal scored result entry with encounter_output embedded."""
+    state = {}
+    if encounter_output is not None:
+        state["encounter_output"] = encounter_output
+    if evidence_gaps is not None:
+        state["hypothesis_evidence_gaps"] = evidence_gaps
+    return {
+        "case_id": "test_01",
+        "score": {},
+        "result_bundle": {"session": {"clinical_state": state}},
+    }
+
+
+def _group_with_entries(entries):
+    return {
+        "label": "test",
+        "case_count": len(entries),
+        "scored_count": len(entries),
+        "scored_results": entries,
+        "analysis": analyze_case_results([]),
+    }
+
+
+class TestCollectEncounterData:
+    def test_empty_groups(self):
+        data = _collect_encounter_data([])
+        assert data["case_count"] == 0
+        assert len(data["key_findings"]) == 0
+        assert len(data["suggested_questions"]) == 0
+
+    def test_extracts_from_scored_results(self):
+        eo = _encounter_output(
+            key_findings=["headache", "fever"],
+            red_flags=[{"label": "Neck stiffness", "severity": "high"}],
+            hypotheses=[{
+                "title": "Meningitis", "rank": 1,
+                "priority_class": "must_not_miss",
+                "present_evidence": [], "conflicting_evidence": [],
+                "findings": [
+                    {"name": "fever", "status": "present", "reason": "Core triad"},
+                    {"name": "photophobia", "status": "absent", "reason": "Classic sign"},
+                ],
+                "next_question": None,
+            }],
+        )
+        group = _group_with_entries([_scored_entry(eo)])
+        data = _collect_encounter_data([group])
+        assert data["case_count"] == 1
+        assert data["key_findings"]["headache"] == 1
+        assert data["red_flags"]["Neck stiffness"] == 1
+        assert "Meningitis" in data["hypotheses"]
+        assert data["findings_by_hypothesis"]["Meningitis"]["photophobia"]["absent"] == 1
+
+    def test_graceful_missing_encounter_output(self):
+        entry = _scored_entry()  # no encounter_output
+        group = _group_with_entries([entry])
+        data = _collect_encounter_data([group])
+        assert data["case_count"] == 0
+
+
+class TestRenderEncounterPreview:
+    def test_section_present_with_data(self):
+        data = {
+            "case_count": 2,
+            "key_findings": Counter({"headache": 2, "fever": 1}),
+            "red_flags": Counter({"Neck stiffness": 1}),
+            "red_flag_severities": {"Neck stiffness": "high"},
+            "hypotheses": {"Meningitis": {"count": 2, "total_rank": 2, "priority_classes": Counter({"must_not_miss": 2})}},
+            "findings_by_hypothesis": {},
+            "suggested_questions": [],
+        }
+        lines = _render_encounter_preview(data)
+        text = "\n".join(lines)
+        assert "ENCOUNTER OUTPUT PREVIEW" in text
+        assert "headache" in text
+        assert "Neck stiffness" in text
+        assert "Meningitis" in text
+
+    def test_empty_data(self):
+        data = {
+            "case_count": 0,
+            "key_findings": Counter(),
+            "red_flags": Counter(),
+            "red_flag_severities": {},
+            "hypotheses": {},
+            "findings_by_hypothesis": {},
+            "suggested_questions": [],
+        }
+        assert _render_encounter_preview(data) == []
+
+
+class TestRenderCombinedHypotheses:
+    def test_groups_in_correct_order(self):
+        data = {
+            "hypotheses": {
+                "ACS": {"count": 1, "total_rank": 1, "priority_classes": Counter({"must_not_miss": 1})},
+                "Migraine": {"count": 1, "total_rank": 2, "priority_classes": Counter({"less_likely": 1})},
+                "Pneumonia": {"count": 1, "total_rank": 1, "priority_classes": Counter({"most_likely": 1})},
+            },
+        }
+        lines = _render_combined_hypotheses(data)
+        text = "\n".join(lines)
+        assert "COMBINED HYPOTHESIS VIEW" in text
+        # must_not_miss appears before most_likely, which appears before less_likely
+        idx_mnm = text.index("must_not_miss")
+        idx_ml = text.index("most_likely")
+        idx_ll = text.index("less_likely")
+        assert idx_mnm < idx_ml < idx_ll
+
+    def test_hypothesis_in_correct_group(self):
+        data = {
+            "hypotheses": {
+                "ACS": {"count": 1, "total_rank": 1, "priority_classes": Counter({"must_not_miss": 1})},
+            },
+        }
+        lines = _render_combined_hypotheses(data)
+        text = "\n".join(lines)
+        assert "ACS" in text
+        assert "must_not_miss" in text
+
+
+class TestRenderEvidenceGaps:
+    def test_shows_absent_findings(self):
+        data = {
+            "hypotheses": {
+                "ACS": {"count": 1, "total_rank": 1, "priority_classes": Counter({"must_not_miss": 1})},
+            },
+            "findings_by_hypothesis": {
+                "ACS": {
+                    "troponin": {"absent": 3, "present": 0, "negated": 0, "reason": "Cardiac marker"},
+                },
+            },
+        }
+        lines = _render_evidence_gaps(data)
+        text = "\n".join(lines)
+        assert "EVIDENCE GAPS" in text
+        assert "troponin" in text
+        assert "Cardiac marker" in text
+
+    def test_empty_findings(self):
+        data = {"hypotheses": {}, "findings_by_hypothesis": {}}
+        assert _render_evidence_gaps(data) == []
+
+
+class TestRenderSuggestedQuestions:
+    def test_renders_with_target_and_reason(self):
+        data = {
+            "suggested_questions": [{
+                "question": "Have you coughed up blood?",
+                "target_hypothesis": "PE",
+                "reason": "Hemoptysis is a classic PE sign",
+                "priority_class": "must_not_miss",
+            }],
+        }
+        lines = _render_suggested_questions(data)
+        text = "\n".join(lines)
+        assert "SUGGESTED NEXT QUESTIONS" in text
+        assert "Have you coughed up blood?" in text
+        assert "PE" in text
+        assert "Hemoptysis is a classic PE sign" in text
+
+    def test_priority_ordering(self):
+        data = {
+            "suggested_questions": [
+                {"question": "Q1", "target_hypothesis": "A", "reason": "", "priority_class": "less_likely"},
+                {"question": "Q2", "target_hypothesis": "B", "reason": "", "priority_class": "must_not_miss"},
+            ],
+        }
+        # _collect_encounter_data sorts by priority; test the render with pre-sorted
+        sorted_qs = sorted(
+            data["suggested_questions"],
+            key=lambda q: {"must_not_miss": 0, "most_likely": 1, "less_likely": 2}.get(q["priority_class"], 2),
+        )
+        lines = _render_suggested_questions({"suggested_questions": sorted_qs})
+        text = "\n".join(lines)
+        assert text.index("must_not_miss") < text.index("less_likely")
+
+
+class TestExistingDashboardUnchanged:
+    def test_no_encounter_sections_when_none(self):
+        report = render_dashboard_report([], analyze_case_results([]), None, None)
+        assert "EVALUATION DASHBOARD" in report
+        assert "GLOBAL SUMMARY" in report
+        assert "ENCOUNTER OUTPUT PREVIEW" not in report
+        assert "COMBINED HYPOTHESIS VIEW" not in report
+        assert "EVIDENCE GAPS" not in report
+        assert "SUGGESTED NEXT QUESTIONS" not in report

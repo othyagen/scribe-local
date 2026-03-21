@@ -11,6 +11,7 @@ Run from the project root::
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 from app.case_system import (
@@ -208,6 +209,107 @@ def build_mismatch_report(groups: list[dict]) -> dict:
     }
 
 
+# ── encounter data collection ──────────────────────────────────────
+
+
+_PRIORITY_ORDER = {"must_not_miss": 0, "most_likely": 1, "less_likely": 2}
+
+
+def _collect_encounter_data(groups: list[dict]) -> dict:
+    """Aggregate encounter_output data across all scored results."""
+    case_count = 0
+    key_findings: Counter[str] = Counter()
+    red_flags: Counter[str] = Counter()
+    red_flag_severities: dict[str, str] = {}
+    hypotheses: dict[str, dict] = {}
+    findings_by_hypothesis: dict[str, dict[str, dict]] = {}
+    seen_questions: dict[str, dict] = {}
+
+    for group in groups:
+        for entry in group.get("scored_results", []):
+            state = (
+                entry.get("result_bundle", {})
+                .get("session", {})
+                .get("clinical_state", {})
+            )
+            eo = state.get("encounter_output")
+            if not eo:
+                continue
+
+            case_count += 1
+
+            for kf in eo.get("key_findings", []):
+                key_findings[kf] += 1
+
+            for rf in eo.get("red_flags", []):
+                label = rf.get("label", "")
+                if label:
+                    red_flags[label] += 1
+                    red_flag_severities.setdefault(label, rf.get("severity", ""))
+
+            for hyp in eo.get("hypotheses", []):
+                title = hyp.get("title", "")
+                if not title:
+                    continue
+                pc = hyp.get("priority_class", "less_likely")
+                rank = hyp.get("rank", 0)
+
+                if title not in hypotheses:
+                    hypotheses[title] = {
+                        "count": 0,
+                        "total_rank": 0,
+                        "priority_classes": Counter(),
+                    }
+                hypotheses[title]["count"] += 1
+                hypotheses[title]["total_rank"] += rank
+                hypotheses[title]["priority_classes"][pc] += 1
+
+                for f in hyp.get("findings", []):
+                    name = f.get("name", "")
+                    status = f.get("status", "absent")
+                    reason = f.get("reason", "")
+                    if not name:
+                        continue
+                    if title not in findings_by_hypothesis:
+                        findings_by_hypothesis[title] = {}
+                    if name not in findings_by_hypothesis[title]:
+                        findings_by_hypothesis[title][name] = {
+                            "absent": 0, "present": 0, "negated": 0,
+                            "reason": reason,
+                        }
+                    bucket = status if status in ("absent", "present", "negated") else "absent"
+                    findings_by_hypothesis[title][name][bucket] += 1
+
+            # Suggested questions from hypothesis_evidence_gaps.
+            for sq in (
+                state.get("hypothesis_evidence_gaps", {})
+                .get("suggested_questions", [])
+            ):
+                q_text = sq.get("question", "")
+                if q_text and q_text not in seen_questions:
+                    seen_questions[q_text] = {
+                        "question": q_text,
+                        "target_hypothesis": sq.get("target_hypothesis", ""),
+                        "reason": sq.get("reason", ""),
+                        "priority_class": sq.get("priority_class", "less_likely"),
+                    }
+
+    suggested_questions = sorted(
+        seen_questions.values(),
+        key=lambda q: _PRIORITY_ORDER.get(q["priority_class"], 2),
+    )
+
+    return {
+        "case_count": case_count,
+        "key_findings": key_findings,
+        "red_flags": red_flags,
+        "red_flag_severities": red_flag_severities,
+        "hypotheses": hypotheses,
+        "findings_by_hypothesis": findings_by_hypothesis,
+        "suggested_questions": suggested_questions,
+    }
+
+
 # ── rendering ───────────────────────────────────────────────────────
 
 
@@ -215,6 +317,7 @@ def render_dashboard_report(
     groups: list[dict],
     global_analysis: dict,
     mismatch_report: dict | None = None,
+    encounter_data: dict | None = None,
 ) -> str:
     """Render the full dashboard as a string."""
     lines: list[str] = []
@@ -281,7 +384,132 @@ def render_dashboard_report(
     if mismatch_report:
         lines.extend(_render_mismatch_section(mismatch_report))
 
+    if encounter_data and encounter_data.get("case_count", 0) > 0:
+        lines.extend(_render_encounter_preview(encounter_data))
+        lines.extend(_render_combined_hypotheses(encounter_data))
+        lines.extend(_render_evidence_gaps(encounter_data))
+        lines.extend(_render_suggested_questions(encounter_data))
+
     return "\n".join(lines)
+
+
+# ── encounter rendering ────────────────────────────────────────────
+
+
+def _render_encounter_preview(data: dict) -> list[str]:
+    """Render the encounter output preview section."""
+    lines: list[str] = []
+    kf = data.get("key_findings", Counter())
+    rf = data.get("red_flags", Counter())
+    hyps = data.get("hypotheses", {})
+
+    if not kf and not rf and not hyps:
+        return lines
+
+    lines.append("--- ENCOUNTER OUTPUT PREVIEW ---")
+    lines.append(f"  cases_with_encounter_output: {data.get('case_count', 0)}")
+    lines.append("")
+
+    if kf:
+        lines.append("  top_key_findings:")
+        for finding, count in kf.most_common(10):
+            lines.append(f"    {finding:<30} ({count}x)")
+        lines.append("")
+
+    if rf:
+        severities = data.get("red_flag_severities", {})
+        lines.append("  red_flags:")
+        for label, count in rf.most_common():
+            sev = severities.get(label, "")
+            lines.append(f"    {label:<30} [{sev}] ({count}x)")
+        lines.append("")
+
+    if hyps:
+        lines.append("  top_hypotheses:")
+        top = sorted(hyps.items(), key=lambda x: -x[1]["count"])[:5]
+        for title, info in top:
+            avg_rank = info["total_rank"] / info["count"] if info["count"] else 0
+            lines.append(f"    {title:<30} ({info['count']}x, avg_rank={avg_rank:.1f})")
+        lines.append("")
+
+    return lines
+
+
+def _render_combined_hypotheses(data: dict) -> list[str]:
+    """Render hypotheses grouped by priority class."""
+    hyps = data.get("hypotheses", {})
+    if not hyps:
+        return []
+
+    lines: list[str] = ["--- COMBINED HYPOTHESIS VIEW ---"]
+
+    for pc_label in ("must_not_miss", "most_likely", "less_likely"):
+        members = [
+            (title, info)
+            for title, info in hyps.items()
+            if info["priority_classes"].get(pc_label, 0) > 0
+        ]
+        if not members:
+            continue
+
+        members.sort(key=lambda x: x[1]["total_rank"] / max(x[1]["count"], 1))
+        lines.append(f"  [{pc_label}]")
+        for title, info in members:
+            avg_rank = info["total_rank"] / info["count"] if info["count"] else 0
+            lines.append(f"    #{avg_rank:.0f} {title} ({info['count']}x)")
+        lines.append("")
+
+    return lines
+
+
+def _render_evidence_gaps(data: dict) -> list[str]:
+    """Render absent findings for important hypotheses."""
+    findings = data.get("findings_by_hypothesis", {})
+    hyps = data.get("hypotheses", {})
+    if not findings:
+        return []
+
+    # Only show must_not_miss and most_likely hypotheses.
+    important = {
+        title for title, info in hyps.items()
+        if (info["priority_classes"].get("must_not_miss", 0) > 0
+            or info["priority_classes"].get("most_likely", 0) > 0)
+    }
+    relevant = {t: f for t, f in findings.items() if t in important}
+    if not relevant:
+        return []
+
+    lines: list[str] = ["--- EVIDENCE GAPS ---"]
+    for title in sorted(relevant):
+        absent = [
+            (name, detail)
+            for name, detail in relevant[title].items()
+            if detail["absent"] > 0
+        ]
+        if not absent:
+            continue
+        lines.append(f"  {title}:")
+        for name, detail in sorted(absent, key=lambda x: -x[1]["absent"]):
+            reason = f" — {detail['reason']}" if detail["reason"] else ""
+            lines.append(f"    {name:<25} absent {detail['absent']}x{reason}")
+    lines.append("")
+    return lines
+
+
+def _render_suggested_questions(data: dict) -> list[str]:
+    """Render suggested next questions ordered by priority."""
+    questions = data.get("suggested_questions", [])
+    if not questions:
+        return []
+
+    lines: list[str] = ["--- SUGGESTED NEXT QUESTIONS ---"]
+    for sq in questions[:10]:
+        lines.append(f"  [{sq['priority_class']}] {sq['question']}")
+        lines.append(f"    hypothesis: {sq['target_hypothesis']}")
+        if sq.get("reason"):
+            lines.append(f"    reason:     {sq['reason']}")
+    lines.append("")
+    return lines
 
 
 # ── mismatch rendering ─────────────────────────────────────────────
@@ -372,10 +600,12 @@ def run_dashboard(
     ]
     global_analysis = build_global_analysis(groups)
     mismatch_report = build_mismatch_report(groups)
+    encounter_data = _collect_encounter_data(groups)
     return {
         "groups": groups,
         "global_analysis": global_analysis,
         "mismatch_report": mismatch_report,
+        "encounter_data": encounter_data,
     }
 
 
@@ -385,6 +615,7 @@ def main() -> None:
         dashboard["groups"],
         dashboard["global_analysis"],
         dashboard.get("mismatch_report"),
+        dashboard.get("encounter_data"),
     )
     print(report)
 

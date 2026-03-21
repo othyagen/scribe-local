@@ -262,7 +262,7 @@ class TestRunCase:
         result = run_case(_minimal_case())
         assert set(result.keys()) == {
             "case_id", "session", "app_view", "metrics",
-            "ground_truth", "validation",
+            "ground_truth", "validation", "input_metadata",
         }
 
     def test_case_id_in_result(self):
@@ -337,7 +337,7 @@ class TestRunCaseScript:
         result = run_case_script(_full_case())
         assert set(result.keys()) == {
             "case_id", "session", "app_view", "metrics",
-            "ground_truth", "validation",
+            "ground_truth", "validation", "input_metadata",
         }
 
     def test_script_applies_answers(self):

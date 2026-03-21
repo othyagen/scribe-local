@@ -285,3 +285,65 @@ class TestSyntheticSafety:
         # Empty string is not a valid provider.
         with pytest.raises(ValueError):
             get_tts_provider("")
+
+
+# ── input metadata ───────────────────────────────────────────────
+
+
+class TestInputMetadata:
+    def test_text_mode_metadata(self):
+        result = run_case(_minimal_case())
+        meta = result["input_metadata"]
+        assert meta["mode"] == "text"
+        assert meta["synthetic"] is False
+        assert meta["tts"] is None
+
+    def test_text_mode_invalid_case_has_metadata(self):
+        result = run_case({"case_id": "bad"})
+        meta = result["input_metadata"]
+        assert meta["mode"] == "text"
+        assert meta["synthetic"] is False
+
+    def test_tts_mode_metadata_on_success(self, tmp_path):
+        import struct
+        import wave
+
+        wav_path = tmp_path / "out.wav"
+        samples = struct.pack("<1600h", *([0] * 1600))
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(samples)
+
+        mock_provider = _mock_tts_provider(
+            success=True, audio_path=str(wav_path),
+        )
+        with patch("app.case_tts.get_tts_provider", return_value=mock_provider):
+            result = run_case_tts(
+                _minimal_case(), tmp_path, provider="mock",
+                asr_engine=MagicMock(transcribe=MagicMock(return_value=[])),
+            )
+
+        meta = result["input_metadata"]
+        assert meta["mode"] == "tts"
+        assert meta["synthetic"] is True
+        assert meta["tts"]["provider"] == "mock"
+        assert meta["tts"]["voice"] == "test-voice"
+
+    def test_tts_mode_metadata_on_failure(self, tmp_path):
+        mock_provider = _mock_tts_provider(success=False)
+        with patch("app.case_tts.get_tts_provider", return_value=mock_provider):
+            result = run_case_tts(_minimal_case(), tmp_path, provider="mock")
+
+        meta = result["input_metadata"]
+        assert meta["mode"] == "tts"
+        assert meta["synthetic"] is True
+        assert meta["tts"] is None  # no provider info on failure
+
+    def test_tts_mode_invalid_case_has_metadata(self, tmp_path):
+        result = run_case_tts({"case_id": "bad"}, tmp_path)
+        meta = result["input_metadata"]
+        assert meta["mode"] == "tts"
+        assert meta["synthetic"] is True
+        assert meta["tts"] is None

@@ -184,6 +184,11 @@ def _merge_config(case: dict) -> dict:
     return base
 
 
+def _text_input_metadata() -> dict:
+    """Build input_metadata for text-mode execution."""
+    return {"mode": "text", "synthetic": False, "tts": None}
+
+
 def _build_result(
     case: dict,
     session: dict,
@@ -199,6 +204,7 @@ def _build_result(
         "metrics": metrics,
         "ground_truth": case.get("ground_truth") or {},
         "validation": validation,
+        "input_metadata": _text_input_metadata(),
     }
 
 
@@ -223,6 +229,7 @@ def run_case(case: dict) -> dict:
             "metrics": {},
             "ground_truth": case.get("ground_truth") or {},
             "validation": validation,
+            "input_metadata": _text_input_metadata(),
         }
 
     config = _merge_config(case)
@@ -255,6 +262,7 @@ def run_case_script(case: dict) -> dict:
             "metrics": {},
             "ground_truth": case.get("ground_truth") or {},
             "validation": validation,
+            "input_metadata": _text_input_metadata(),
         }
 
     config = _merge_config(case)

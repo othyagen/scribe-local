@@ -28,6 +28,17 @@ from app.clinical_metrics import derive_clinical_metrics
 from app.case_system import validate_case, _merge_config
 
 
+def _tts_input_metadata(tts_result: dict | None) -> dict:
+    """Build input_metadata for TTS-mode execution."""
+    tts_info = None
+    if tts_result and tts_result.get("success"):
+        tts_info = {
+            "provider": tts_result.get("provider", ""),
+            "voice": tts_result.get("voice", ""),
+        }
+    return {"mode": "tts", "synthetic": True, "tts": tts_info}
+
+
 # ── TTS synthesis ──────────────────────────────────────────────────
 
 
@@ -124,6 +135,7 @@ def run_case_tts(
             "ground_truth": case.get("ground_truth") or {},
             "validation": validation,
             "tts_result": None,
+            "input_metadata": _tts_input_metadata(None),
         }
 
     # Step 1: TTS synthesis.
@@ -140,6 +152,7 @@ def run_case_tts(
             "ground_truth": case.get("ground_truth") or {},
             "validation": validation,
             "tts_result": tts_result,
+            "input_metadata": _tts_input_metadata(tts_result),
         }
 
     # Step 2: Load audio.
@@ -192,4 +205,5 @@ def run_case_tts(
         "ground_truth": case.get("ground_truth") or {},
         "validation": validation,
         "tts_result": tts_result,
+        "input_metadata": _tts_input_metadata(tts_result),
     }

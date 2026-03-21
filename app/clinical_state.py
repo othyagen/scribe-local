@@ -60,6 +60,7 @@ from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
 from app.hypothesis_prioritization import prioritize_hypotheses
 from app.hypothesis_evidence_gaps import identify_evidence_gaps
+from app.encounter_output import build_encounter_output
 from app.clinical_interaction import derive_next_questions
 
 
@@ -198,6 +199,9 @@ def build_clinical_state(
         state["observations"],
         state["negations"],
     )
+
+    # Encounter output — aggregated clinical reasoning view.
+    state["encounter_output"] = build_encounter_output(state)
 
     # Clinical summary — format-neutral structured summary
     state["clinical_summary"] = build_clinical_summary(state)

@@ -41,6 +41,7 @@ from app.hypothesis_ranking import rank_hypotheses
 from app.hypothesis_explanations import build_hypothesis_explanations
 from app.hypothesis_prioritization import prioritize_hypotheses
 from app.hypothesis_evidence_gaps import identify_evidence_gaps
+from app.encounter_output import build_encounter_output
 from app.clinical_summary import build_clinical_summary
 from app.clinical_summary_views import build_summary_views
 from app.clinical_insights import derive_clinical_insights
@@ -177,6 +178,9 @@ def apply_update(
         state["observations"],
         state["negations"],
     )
+
+    # Encounter output.
+    state["encounter_output"] = build_encounter_output(state)
 
     # Clinical summary.
     state["clinical_summary"] = build_clinical_summary(state)

@@ -217,10 +217,17 @@ def identify_evidence_gaps(
         present: list[str] = []
         absent: list[str] = []
         negated_list: list[str] = []
+        findings: list[dict] = []
 
         for entry in expected:
             finding = entry["finding"]
+            reason = entry.get("reason", "")
             status = _classify_finding(finding, obs_values, supporting_values, negated)
+            findings.append({
+                "name": finding,
+                "status": status,
+                "reason": reason,
+            })
             if status == "present":
                 present.append(finding)
             elif status == "negated":
@@ -232,7 +239,7 @@ def identify_evidence_gaps(
                     "target_hypothesis": title,
                     "target_finding": finding,
                     "priority_class": prio_class,
-                    "reason": entry.get("reason", ""),
+                    "reason": reason,
                 }))
 
         missing_evidence.append({
@@ -242,6 +249,7 @@ def identify_evidence_gaps(
             "present": present,
             "absent": absent,
             "negated": negated_list,
+            "findings": findings,
         })
 
     # Sort questions: priority class, then rank, then stable order.

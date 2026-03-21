@@ -329,6 +329,7 @@ class TestOutputStructure:
         assert "present" in entry
         assert "absent" in entry
         assert "negated" in entry
+        assert "findings" in entry
 
     def test_question_entry_keys(self):
         hyps = [_hyp("Meningitis", rank=1)]
@@ -397,3 +398,73 @@ class TestNoMutation:
         assert prio == orig_prio
         assert obs == orig_obs
         assert negations == orig_neg
+
+
+# ── findings per hypothesis ──────────────────────────────────────────
+
+
+class TestFindings:
+    def test_findings_list_present(self):
+        hyps = [_hyp("Meningitis", rank=1)]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        entry = result["missing_evidence"][0]
+        assert isinstance(entry["findings"], list)
+        assert len(entry["findings"]) > 0
+
+    def test_finding_entry_keys(self):
+        hyps = [_hyp("Meningitis", rank=1)]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        for f in result["missing_evidence"][0]["findings"]:
+            assert "name" in f
+            assert "status" in f
+            assert "reason" in f
+
+    def test_finding_statuses_correct(self):
+        """Present, negated, and absent findings classified correctly."""
+        hyps = [_hyp("Meningitis", rank=1, supporting=[_ev("obs_0001")])]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        obs = [_obs("obs_0001", "headache")]
+        negations = ["No fever"]
+        result = identify_evidence_gaps(hyps, prio, obs, negations)
+        findings = result["missing_evidence"][0]["findings"]
+        by_name = {f["name"]: f for f in findings}
+        assert by_name["headache"]["status"] == "present"
+        assert by_name["fever"]["status"] == "negated"
+        assert by_name["neck stiffness"]["status"] == "absent"
+        assert by_name["photophobia"]["status"] == "absent"
+
+    def test_finding_reasons_non_empty(self):
+        hyps = [_hyp("Pulmonary embolism", rank=1)]
+        prio = [_prio("hyp_0001", "Pulmonary embolism", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        for f in result["missing_evidence"][0]["findings"]:
+            assert isinstance(f["reason"], str)
+            assert len(f["reason"]) > 0
+
+    def test_findings_cover_all_condition_entries(self):
+        """Findings list has one entry per CONDITION_FINDINGS entry."""
+        from app.hypothesis_evidence_gaps import CONDITION_FINDINGS
+        hyps = [_hyp("Meningitis", rank=1)]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        result = identify_evidence_gaps(hyps, prio, [], [])
+        findings = result["missing_evidence"][0]["findings"]
+        expected_count = len(CONDITION_FINDINGS["meningitis"])
+        assert len(findings) == expected_count
+
+    def test_findings_consistent_with_present_absent_negated(self):
+        """Findings statuses match the present/absent/negated lists."""
+        hyps = [_hyp("Meningitis", rank=1, supporting=[_ev("obs_0001")])]
+        prio = [_prio("hyp_0001", "Meningitis", 1, "must_not_miss")]
+        obs = [_obs("obs_0001", "headache")]
+        negations = ["No fever"]
+        result = identify_evidence_gaps(hyps, prio, obs, negations)
+        me = result["missing_evidence"][0]
+        findings = me["findings"]
+        present_names = [f["name"] for f in findings if f["status"] == "present"]
+        absent_names = [f["name"] for f in findings if f["status"] == "absent"]
+        negated_names = [f["name"] for f in findings if f["status"] == "negated"]
+        assert set(present_names) == set(me["present"])
+        assert set(absent_names) == set(me["absent"])
+        assert set(negated_names) == set(me["negated"])

@@ -7,8 +7,6 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional
 
-import numpy as np
-
 from app.config import AppConfig
 
 
@@ -97,6 +95,8 @@ class ASREngine:
         Returns a list of ``AsrResult`` segments.  Empty segments are
         silently dropped.
         """
+        import numpy as np  # noqa: F811 — lazy to avoid hard dep at import time
+
         segments, _info = self.model.transcribe(
             audio.squeeze(),
             language=self.language,

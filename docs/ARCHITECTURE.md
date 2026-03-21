@@ -224,3 +224,8 @@ To add a new export format:
 1. Create `app/export_<format>.py` that reads from clinical state.
 2. Wire it in `main.py` with a CLI flag.
 3. It must not modify the state dict.
+
+## See Also
+
+- [`docs/GUIDE.md`](GUIDE.md) — Architecture overview, entrypoint map, and "what to use when" guide.
+- [`app/api.py`](../app/api.py) — Public API surface: all primary entrypoints re-exported in one module.

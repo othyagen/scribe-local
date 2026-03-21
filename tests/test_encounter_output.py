@@ -99,10 +99,13 @@ def _rf(label: str, severity: str = "high") -> dict:
 class TestEmptyInput:
     def test_empty_state(self):
         result = build_encounter_output(_base_state())
-        assert result == {
-            "key_findings": [],
-            "red_flags": [],
-            "hypotheses": [],
+        assert result["key_findings"] == []
+        assert result["red_flags"] == []
+        assert result["hypotheses"] == []
+        assert result["combined_hypotheses"] == {
+            "must_not_miss": [],
+            "most_likely": [],
+            "less_likely": [],
         }
 
     def test_no_hypotheses_with_symptoms(self):
@@ -120,7 +123,7 @@ class TestEmptyInput:
 class TestStructure:
     def test_top_level_keys(self):
         result = build_encounter_output(_base_state())
-        assert set(result.keys()) == {"key_findings", "red_flags", "hypotheses"}
+        assert set(result.keys()) == {"key_findings", "red_flags", "hypotheses", "combined_hypotheses"}
 
     def test_hypothesis_entry_keys(self):
         state = _base_state(hypotheses=[_hyp("Pneumonia", rank=1)])
@@ -315,3 +318,83 @@ class TestRedFlags:
         state["derived"]["red_flags"] = [{"flag": "x", "label": "", "severity": "high", "evidence": []}]
         result = build_encounter_output(state)
         assert result["red_flags"] == []
+
+
+# ── combined hypotheses ──────────────────────────────────────────────
+
+
+class TestCombinedHypotheses:
+    def test_grouping_correct(self):
+        state = _base_state(
+            hypotheses=[
+                _hyp("Pneumonia", rank=1, hyp_id="h1"),
+                _hyp("ACS", rank=2, hyp_id="h2"),
+                _hyp("Migraine", rank=3, hyp_id="h3"),
+            ],
+            hypothesis_prioritization=[
+                _prio("h1", "most_likely"),
+                _prio("h2", "must_not_miss"),
+                _prio("h3", "less_likely"),
+            ],
+        )
+        result = build_encounter_output(state)
+        combined = result["combined_hypotheses"]
+        assert len(combined["must_not_miss"]) == 1
+        assert combined["must_not_miss"][0]["title"] == "ACS"
+        assert len(combined["most_likely"]) == 1
+        assert combined["most_likely"][0]["title"] == "Pneumonia"
+        assert len(combined["less_likely"]) == 1
+        assert combined["less_likely"][0]["title"] == "Migraine"
+
+    def test_rank_order_within_group(self):
+        state = _base_state(
+            hypotheses=[
+                _hyp("PE", rank=3, hyp_id="h3"),
+                _hyp("ACS", rank=1, hyp_id="h1"),
+                _hyp("Sepsis", rank=2, hyp_id="h2"),
+            ],
+            hypothesis_prioritization=[
+                _prio("h1", "must_not_miss"),
+                _prio("h2", "must_not_miss"),
+                _prio("h3", "must_not_miss"),
+            ],
+        )
+        result = build_encounter_output(state)
+        mnm = result["combined_hypotheses"]["must_not_miss"]
+        ranks = [h["rank"] for h in mnm]
+        assert ranks == [1, 2, 3]
+
+    def test_empty_groups_when_no_hypotheses(self):
+        result = build_encounter_output(_base_state())
+        combined = result["combined_hypotheses"]
+        assert combined == {
+            "must_not_miss": [],
+            "most_likely": [],
+            "less_likely": [],
+        }
+
+    def test_original_hypotheses_list_unchanged(self):
+        """combined_hypotheses is additive — hypotheses list still present."""
+        state = _base_state(
+            hypotheses=[_hyp("Pneumonia", rank=1, hyp_id="h1")],
+            hypothesis_prioritization=[_prio("h1", "most_likely")],
+        )
+        result = build_encounter_output(state)
+        assert len(result["hypotheses"]) == 1
+        assert result["hypotheses"][0]["title"] == "Pneumonia"
+        assert len(result["combined_hypotheses"]["most_likely"]) == 1
+
+    def test_entries_contain_full_data(self):
+        """Each entry in combined_hypotheses has all hypothesis fields."""
+        state = _base_state(
+            hypotheses=[_hyp("ACS", rank=1, hyp_id="h1", supporting=["chest pain"])],
+            hypothesis_prioritization=[_prio("h1", "must_not_miss")],
+        )
+        result = build_encounter_output(state)
+        entry = result["combined_hypotheses"]["must_not_miss"][0]
+        expected_keys = {
+            "title", "rank", "priority_class",
+            "present_evidence", "conflicting_evidence",
+            "findings", "next_question",
+        }
+        assert set(entry.keys()) == expected_keys

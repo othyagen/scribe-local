@@ -97,8 +97,20 @@ def build_encounter_output(state: dict) -> dict:
             "next_question": next_question,
         })
 
+    # Combined view: group by priority class, sorted by rank within each.
+    combined: dict[str, list[dict]] = {
+        "must_not_miss": [],
+        "most_likely": [],
+        "less_likely": [],
+    }
+    for entry in hyp_entries:
+        pc = entry["priority_class"]
+        if pc in combined:
+            combined[pc].append(entry)
+
     return {
         "key_findings": key_findings,
         "red_flags": red_flags,
         "hypotheses": hyp_entries,
+        "combined_hypotheses": combined,
     }

@@ -205,6 +205,8 @@ def synthea_patient_to_case(patient: dict) -> dict:
     segments = build_segments(patient)
     ground_truth = build_ground_truth(patient)
 
+    from app.case_provenance import build_provenance
+
     return {
         "case_id": f"synthea_{patient_id}",
         "title": title,
@@ -220,6 +222,10 @@ def synthea_patient_to_case(patient: dict) -> dict:
             "original_id": patient_id,
             "tags": list(patient.get("conditions") or []),
         },
+        "provenance": build_provenance(
+            "synthea",
+            source_ref=f"synthea:{patient_id}",
+        ),
     }
 
 

@@ -34,7 +34,7 @@ _REQUIRED_FIELDS = frozenset({"case_id", "segments"})
 
 _OPTIONAL_FIELDS = frozenset({
     "title", "description", "config", "ground_truth",
-    "answer_script", "meta",
+    "answer_script", "meta", "provenance", "safety",
 })
 
 _KNOWN_FIELDS = _REQUIRED_FIELDS | _OPTIONAL_FIELDS
@@ -164,6 +164,13 @@ def validate_case(case: dict) -> dict:
     unknown = set(case.keys()) - _KNOWN_FIELDS
     if unknown:
         warnings.append(f"unknown fields: {', '.join(sorted(unknown))}")
+
+    # Provenance validation.
+    from app.case_provenance import validate_provenance
+
+    prov_result = validate_provenance(case)
+    errors.extend(prov_result["errors"])
+    warnings.extend(prov_result["warnings"])
 
     return {
         "valid": len(errors) == 0,

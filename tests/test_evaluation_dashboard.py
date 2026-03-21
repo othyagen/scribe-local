@@ -26,6 +26,12 @@ from scripts.run_evaluation_dashboard import (
     _render_combined_hypotheses,
     _render_evidence_gaps,
     _render_suggested_questions,
+    aggregate_compare_data,
+    _render_compare_summary,
+    _render_critical_changes,
+    _render_findings_diff,
+    _render_hypothesis_diff,
+    _render_question_diff,
 )
 from app.case_system import validate_case
 from app.case_analysis import analyze_case_results
@@ -578,3 +584,328 @@ class TestExistingDashboardUnchanged:
         assert "COMBINED HYPOTHESIS VIEW" not in report
         assert "EVIDENCE GAPS" not in report
         assert "SUGGESTED NEXT QUESTIONS" not in report
+
+    def test_no_compare_sections_when_none(self):
+        report = render_dashboard_report([], analyze_case_results([]), None, None, None)
+        assert "TEXT VS TTS SUMMARY" not in report
+        assert "CRITICAL CLINICAL CHANGES" not in report
+        assert "FINDINGS DIFF OVERVIEW" not in report
+        assert "HYPOTHESIS / PRIORITIZATION DIFF" not in report
+        assert "QUESTION DIFF" not in report
+
+
+# ── compare data helpers ───────────────────────────────────────────
+
+
+def _compare_result(
+    case_id="test_01",
+    kf_shared=None, kf_text_only=None, kf_tts_only=None,
+    rf_shared=None, rf_text_only=None, rf_tts_only=None,
+    hyp_shared_titles=None, hyp_text_only_titles=None,
+    hyp_tts_only_titles=None, hyp_rank_changes=None,
+    prio_unchanged=None, prio_changed=None,
+    prio_dropped=None, prio_added=None,
+    q_shared=None, q_text_only=None, q_tts_only=None,
+):
+    """Build a minimal compare_case_modes result dict."""
+    return {
+        "text_result": {"case_id": case_id},
+        "tts_result": {"case_id": case_id},
+        "comparison": {
+            "key_findings": {
+                "shared": kf_shared or [],
+                "text_only": kf_text_only or [],
+                "tts_only": kf_tts_only or [],
+            },
+            "red_flags": {
+                "shared": rf_shared or [],
+                "text_only": rf_text_only or [],
+                "tts_only": rf_tts_only or [],
+            },
+            "hypotheses": {
+                "shared_titles": hyp_shared_titles or [],
+                "text_only_titles": hyp_text_only_titles or [],
+                "tts_only_titles": hyp_tts_only_titles or [],
+                "rank_changes": hyp_rank_changes or [],
+            },
+            "prioritization": {
+                "unchanged": prio_unchanged or [],
+                "changed": prio_changed or [],
+                "dropped": prio_dropped or [],
+                "added": prio_added or [],
+            },
+            "questions": {
+                "shared": q_shared or [],
+                "text_only": q_text_only or [],
+                "tts_only": q_tts_only or [],
+            },
+        },
+    }
+
+
+# ── aggregate_compare_data ─────────────────────────────────────────
+
+
+class TestAggregateCompareData:
+    def test_empty_list(self):
+        data = aggregate_compare_data([])
+        assert data["cases_compared"] == 0
+        assert sum(data["findings_lost"].values()) == 0
+        assert len(data["critical_changes"]) == 0
+
+    def test_counts_findings(self):
+        cr = _compare_result(
+            kf_shared=["headache"],
+            kf_text_only=["fever", "chills"],
+            kf_tts_only=["nausea"],
+        )
+        data = aggregate_compare_data([cr])
+        assert data["cases_compared"] == 1
+        assert data["findings_lost"]["fever"] == 1
+        assert data["findings_lost"]["chills"] == 1
+        assert data["findings_gained"]["nausea"] == 1
+        assert data["findings_shared"]["headache"] == 1
+
+    def test_counts_red_flags(self):
+        cr = _compare_result(
+            rf_text_only=["Neck stiffness"],
+            rf_tts_only=["Chest pain"],
+        )
+        data = aggregate_compare_data([cr])
+        assert data["red_flags_lost"]["Neck stiffness"] == 1
+        assert data["red_flags_gained"]["Chest pain"] == 1
+
+    def test_tracks_rank_changes(self):
+        cr = _compare_result(
+            hyp_rank_changes=[{"title": "PE", "text_rank": 1, "tts_rank": 3}],
+        )
+        data = aggregate_compare_data([cr])
+        assert len(data["hyp_rank_changes"]) == 1
+        assert data["hyp_rank_changes"][0]["title"] == "PE"
+
+    def test_tracks_prioritization(self):
+        cr = _compare_result(
+            prio_unchanged=[{"title": "A", "priority_class": "most_likely"}],
+            prio_changed=[{"title": "B", "text_priority": "must_not_miss", "tts_priority": "most_likely"}],
+            prio_dropped=[{"title": "C", "priority_class": "must_not_miss"}],
+            prio_added=[{"title": "D", "priority_class": "less_likely"}],
+        )
+        data = aggregate_compare_data([cr])
+        assert data["prio_unchanged"] == 1
+        assert len(data["prio_changed"]) == 1
+        assert len(data["prio_dropped"]) == 1
+        assert len(data["prio_added"]) == 1
+
+    def test_tracks_questions(self):
+        cr = _compare_result(
+            q_shared=["Q1"],
+            q_text_only=["Q2"],
+            q_tts_only=["Q3"],
+        )
+        data = aggregate_compare_data([cr])
+        assert data["questions_shared"]["Q1"] == 1
+        assert data["questions_text_only"]["Q2"] == 1
+        assert data["questions_tts_only"]["Q3"] == 1
+
+    def test_aggregates_across_cases(self):
+        cr1 = _compare_result(kf_text_only=["fever"])
+        cr2 = _compare_result(kf_text_only=["fever", "cough"])
+        data = aggregate_compare_data([cr1, cr2])
+        assert data["cases_compared"] == 2
+        assert data["findings_lost"]["fever"] == 2
+        assert data["findings_lost"]["cough"] == 1
+
+    def test_critical_must_not_miss_dropped(self):
+        cr = _compare_result(
+            case_id="chest_pain",
+            prio_dropped=[{"title": "ACS", "priority_class": "must_not_miss"}],
+        )
+        data = aggregate_compare_data([cr])
+        assert len(data["critical_changes"]) == 1
+        assert data["critical_changes"][0]["type"] == "must_not_miss_dropped"
+        assert data["critical_changes"][0]["detail"] == "ACS"
+        assert data["critical_changes"][0]["case_id"] == "chest_pain"
+
+    def test_critical_red_flag_lost(self):
+        cr = _compare_result(
+            case_id="meningitis",
+            rf_text_only=["Neck stiffness"],
+        )
+        data = aggregate_compare_data([cr])
+        crit = [c for c in data["critical_changes"] if c["type"] == "red_flag_lost"]
+        assert len(crit) == 1
+        assert crit[0]["detail"] == "Neck stiffness"
+
+    def test_critical_top_rank_changed(self):
+        cr = _compare_result(
+            hyp_rank_changes=[{"title": "PE", "text_rank": 1, "tts_rank": 3}],
+        )
+        data = aggregate_compare_data([cr])
+        crit = [c for c in data["critical_changes"] if c["type"] == "top_rank_changed"]
+        assert len(crit) == 1
+        assert "PE" in crit[0]["detail"]
+
+    def test_no_critical_for_non_top_rank_change(self):
+        cr = _compare_result(
+            hyp_rank_changes=[{"title": "PE", "text_rank": 2, "tts_rank": 3}],
+        )
+        data = aggregate_compare_data([cr])
+        crit = [c for c in data["critical_changes"] if c["type"] == "top_rank_changed"]
+        assert len(crit) == 0
+
+    def test_no_critical_for_less_likely_dropped(self):
+        cr = _compare_result(
+            prio_dropped=[{"title": "X", "priority_class": "less_likely"}],
+        )
+        data = aggregate_compare_data([cr])
+        crit = [c for c in data["critical_changes"] if c["type"] == "must_not_miss_dropped"]
+        assert len(crit) == 0
+
+    def test_skips_missing_comparison(self):
+        data = aggregate_compare_data([{"text_result": {}, "tts_result": {}}])
+        assert data["cases_compared"] == 0
+
+    def test_deterministic(self):
+        cr = _compare_result(
+            kf_text_only=["a", "b"],
+            rf_text_only=["X"],
+            hyp_rank_changes=[{"title": "H", "text_rank": 1, "tts_rank": 2}],
+        )
+        d1 = aggregate_compare_data([cr])
+        d2 = aggregate_compare_data([cr])
+        assert d1 == d2
+
+
+# ── render compare sections ───────────────────────────────────────
+
+
+class TestRenderCompareSummary:
+    def test_renders_with_data(self):
+        data = aggregate_compare_data([_compare_result(
+            kf_text_only=["fever"],
+            kf_tts_only=["nausea"],
+            rf_text_only=["X"],
+        )])
+        lines = _render_compare_summary(data)
+        text = "\n".join(lines)
+        assert "TEXT VS TTS SUMMARY" in text
+        assert "findings_lost" in text
+        assert "findings_gained" in text
+
+    def test_empty_data(self):
+        data = aggregate_compare_data([])
+        assert _render_compare_summary(data) == []
+
+
+class TestRenderCriticalChanges:
+    def test_renders_critical(self):
+        data = aggregate_compare_data([_compare_result(
+            case_id="c1",
+            prio_dropped=[{"title": "ACS", "priority_class": "must_not_miss"}],
+        )])
+        lines = _render_critical_changes(data)
+        text = "\n".join(lines)
+        assert "CRITICAL CLINICAL CHANGES" in text
+        assert "must_not_miss_dropped" in text
+        assert "ACS" in text
+        assert "c1" in text
+
+    def test_empty_when_no_critical(self):
+        data = aggregate_compare_data([_compare_result(kf_shared=["headache"])])
+        assert _render_critical_changes(data) == []
+
+
+class TestRenderFindingsDiff:
+    def test_renders_lost_and_gained(self):
+        data = aggregate_compare_data([_compare_result(
+            kf_text_only=["fever"],
+            kf_tts_only=["nausea"],
+            kf_shared=["headache"],
+        )])
+        lines = _render_findings_diff(data)
+        text = "\n".join(lines)
+        assert "FINDINGS DIFF OVERVIEW" in text
+        assert "fever" in text
+        assert "nausea" in text
+        assert "shared_findings" in text
+
+    def test_empty_when_no_diff(self):
+        data = aggregate_compare_data([_compare_result(kf_shared=["headache"])])
+        assert _render_findings_diff(data) == []
+
+
+class TestRenderHypothesisDiff:
+    def test_renders_dropped_and_rank_changes(self):
+        data = aggregate_compare_data([_compare_result(
+            hyp_text_only_titles=["PE"],
+            hyp_rank_changes=[{"title": "ACS", "text_rank": 1, "tts_rank": 3}],
+            prio_changed=[{"title": "ACS", "text_priority": "must_not_miss", "tts_priority": "most_likely"}],
+        )])
+        lines = _render_hypothesis_diff(data)
+        text = "\n".join(lines)
+        assert "HYPOTHESIS / PRIORITIZATION DIFF" in text
+        assert "PE" in text
+        assert "ACS" in text
+        assert "#1->3" in text or "#1->" in text
+
+    def test_empty_when_no_changes(self):
+        data = aggregate_compare_data([_compare_result(kf_shared=["headache"])])
+        assert _render_hypothesis_diff(data) == []
+
+
+class TestRenderQuestionDiff:
+    def test_renders_questions(self):
+        data = aggregate_compare_data([_compare_result(
+            q_text_only=["Any chest pain?"],
+            q_tts_only=["Any cough?"],
+            q_shared=["Any fever?"],
+        )])
+        lines = _render_question_diff(data)
+        text = "\n".join(lines)
+        assert "QUESTION DIFF" in text
+        assert "Any chest pain?" in text
+        assert "Any cough?" in text
+        assert "shared_questions" in text
+
+    def test_empty_when_no_diff(self):
+        data = aggregate_compare_data([_compare_result(q_shared=["Q1"])])
+        assert _render_question_diff(data) == []
+
+
+# ── compare sections in full report ───────────────────────────────
+
+
+class TestCompareInFullReport:
+    def test_compare_sections_render(self):
+        cr = _compare_result(
+            kf_text_only=["fever"],
+            rf_text_only=["Neck stiffness"],
+            hyp_text_only_titles=["PE"],
+            prio_dropped=[{"title": "ACS", "priority_class": "must_not_miss"}],
+            q_text_only=["Any chest pain?"],
+        )
+        data = aggregate_compare_data([cr])
+        report = render_dashboard_report(
+            [], analyze_case_results([]), None, None, data,
+        )
+        assert "TEXT VS TTS SUMMARY" in report
+        assert "CRITICAL CLINICAL CHANGES" in report
+        assert "FINDINGS DIFF OVERVIEW" in report
+        assert "HYPOTHESIS / PRIORITIZATION DIFF" in report
+        assert "QUESTION DIFF" in report
+
+    def test_existing_sections_preserved_with_compare(self):
+        cr = _compare_result(kf_text_only=["fever"])
+        data = aggregate_compare_data([cr])
+        report = render_dashboard_report(
+            [], analyze_case_results([]), None, None, data,
+        )
+        assert "EVALUATION DASHBOARD" in report
+        assert "GLOBAL SUMMARY" in report
+
+    def test_no_compare_sections_with_empty_data(self):
+        data = aggregate_compare_data([])
+        report = render_dashboard_report(
+            [], analyze_case_results([]), None, None, data,
+        )
+        assert "TEXT VS TTS SUMMARY" not in report

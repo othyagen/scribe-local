@@ -1,0 +1,36 @@
+case_id: synthea_p2
+title: 42-year-old female with dysuria and urinary frequency
+segments:
+- seg_id: seg_0001
+  t0: 0.0
+  t1: 3.0
+  speaker_id: spk_0
+  normalized_text: 42-year-old female presenting with dysuria and urinary frequency
+    for 2 days.
+- seg_id: seg_0002
+  t0: 3.0
+  t1: 6.0
+  speaker_id: spk_0
+  normalized_text: Reports abdominal pain.
+- seg_id: seg_0003
+  t0: 6.0
+  t1: 9.0
+  speaker_id: spk_0
+  normalized_text: 'Known allergies: penicillin.'
+ground_truth:
+  expected_hypotheses:
+  - urinary tract infection
+  key_findings:
+  - dysuria
+  - urinary frequency
+  - abdominal pain
+  red_flags: []
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+meta:
+  source: synthea
+  original_id: p2
+  tags:
+  - urinary tract infection

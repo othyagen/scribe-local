@@ -1,0 +1,44 @@
+case_id: synthea_p3
+title: 58-year-old male with chest pain and shortness of breath
+segments:
+- seg_id: seg_0001
+  t0: 0.0
+  t1: 3.0
+  speaker_id: spk_0
+  normalized_text: 58-year-old male presenting with chest pain and shortness of breath
+    for 1 day.
+- seg_id: seg_0002
+  t0: 3.0
+  t1: 6.0
+  speaker_id: spk_0
+  normalized_text: Reports nausea.
+- seg_id: seg_0003
+  t0: 6.0
+  t1: 9.0
+  speaker_id: spk_0
+  normalized_text: Has history of diabetes.
+- seg_id: seg_0004
+  t0: 9.0
+  t1: 12.0
+  speaker_id: spk_0
+  normalized_text: Currently taking metformin, aspirin.
+ground_truth:
+  expected_hypotheses:
+  - acute coronary syndrome
+  key_findings:
+  - chest pain
+  - shortness of breath
+  - nausea
+  red_flags:
+  - chest pain
+  - shortness of breath
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+meta:
+  source: synthea
+  original_id: p3
+  tags:
+  - acute coronary syndrome
+  - diabetes

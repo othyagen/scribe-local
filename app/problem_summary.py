@@ -39,10 +39,12 @@ def summarize_problem(clinical_state: dict) -> str:
 
     parts: list[str] = []
 
-    # 1. severity + core_symptom
+    # 1. severity + character + core_symptom
     severity = core_rep.get("severity")
-    if severity:
-        parts.append(f"{severity} {core}")
+    character = core_rep.get("character")
+    descriptors = [d for d in (severity, character) if d]
+    if descriptors:
+        parts.append(f"{' '.join(descriptors)} {core}")
     else:
         parts.append(core)
 

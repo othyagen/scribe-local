@@ -35,6 +35,7 @@ _REQUIRED_FIELDS = frozenset({"case_id", "segments"})
 _OPTIONAL_FIELDS = frozenset({
     "title", "description", "config", "ground_truth",
     "answer_script", "meta", "provenance", "safety",
+    "classification", "patient",
 })
 
 _KNOWN_FIELDS = _REQUIRED_FIELDS | _OPTIONAL_FIELDS

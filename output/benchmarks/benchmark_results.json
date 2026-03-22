@@ -1,0 +1,492 @@
+{
+  "timestamp": "2026-03-15T19:36:41.620993",
+  "cases": {
+    "chest_pain_consultation": {
+      "symptom_extraction": {
+        "expected": [
+          "chest pain",
+          "shortness of breath",
+          "nausea"
+        ],
+        "actual": [
+          "shortness of breath",
+          "chest pain",
+          "nausea",
+          "pain"
+        ],
+        "true_positives": [
+          "chest pain",
+          "shortness of breath",
+          "nausea"
+        ],
+        "false_negatives": [],
+        "false_positives": [
+          "pain"
+        ],
+        "recall": 1.0,
+        "precision": 0.75,
+        "f1": 0.8571428571428571
+      },
+      "negation_accuracy": {
+        "expected": [
+          "sweating",
+          "heart disease",
+          "diabetes"
+        ],
+        "actual": [
+          "No sweating",
+          "No I do not have any heart problems",
+          "No diabetes either"
+        ],
+        "true_positives": [
+          "sweating",
+          "diabetes"
+        ],
+        "false_negatives": [
+          "heart disease"
+        ],
+        "false_positives": [
+          "No I do not have any heart problems"
+        ],
+        "recall": 0.6666666666666666,
+        "precision": 0.6666666666666666,
+        "f1": 0.6666666666666666
+      },
+      "medication_accuracy": {
+        "expected": [
+          "ibuprofen"
+        ],
+        "actual": [
+          "ibuprofen"
+        ],
+        "true_positives": [
+          "ibuprofen"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "duration_accuracy": {
+        "expected": [
+          "three days"
+        ],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [
+          "three days"
+        ],
+        "false_positives": [],
+        "recall": 0.0,
+        "precision": 1.0,
+        "f1": 0.0
+      },
+      "qualifier_accuracy": {
+        "per_symptom": [
+          {
+            "symptom": "chest pain",
+            "fields": {
+              "character": {
+                "expected": "dull",
+                "actual": null,
+                "match": false
+              },
+              "aggravating_factors": {
+                "expected": [
+                  "exertion",
+                  "walking up stairs"
+                ],
+                "actual": [],
+                "true_positives": [],
+                "false_negatives": [
+                  "exertion",
+                  "walking up stairs"
+                ],
+                "false_positives": [],
+                "recall": 0.0,
+                "precision": 1.0,
+                "f1": 0.0
+              },
+              "relieving_factors": {
+                "expected": [
+                  "rest"
+                ],
+                "actual": [],
+                "true_positives": [],
+                "false_negatives": [
+                  "rest"
+                ],
+                "false_positives": [],
+                "recall": 0.0,
+                "precision": 1.0,
+                "f1": 0.0
+              }
+            }
+          }
+        ],
+        "aggregate": {
+          "character": 0.0,
+          "aggravating_factors": 0.0,
+          "relieving_factors": 0.0
+        },
+        "overall_accuracy": 0.0
+      },
+      "pattern_detection": {
+        "expected": [
+          "angina_like"
+        ],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [
+          "angina_like"
+        ],
+        "false_positives": [],
+        "recall": 0.0,
+        "precision": 1.0,
+        "f1": 0.0
+      },
+      "red_flag_detection": {
+        "expected": [
+          "chest_pain_with_dyspnea"
+        ],
+        "actual": [
+          "chest_pain_with_dyspnea"
+        ],
+        "true_positives": [
+          "chest_pain_with_dyspnea"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "site_extraction": {
+        "count": 0,
+        "items": []
+      },
+      "ice_extraction": {
+        "count": 1,
+        "items": {
+          "ideas": [],
+          "concerns": [],
+          "expectations": [
+            {
+              "text": "I would like to run an ECG and some blood tests. We should rule",
+              "seg_id": 14,
+              "speaker_id": "spk_0",
+              "t_start": 14.0
+            }
+          ]
+        }
+      }
+    },
+    "cough_fever_telephone": {
+      "symptom_extraction": {
+        "expected": [
+          "cough",
+          "fever",
+          "sore throat",
+          "fatigue"
+        ],
+        "actual": [
+          "sore throat",
+          "fatigue",
+          "cough",
+          "fever"
+        ],
+        "true_positives": [
+          "cough",
+          "fever",
+          "sore throat",
+          "fatigue"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "negation_accuracy": {
+        "expected": [
+          "difficulty breathing"
+        ],
+        "actual": [
+          "No difficulty breathing"
+        ],
+        "true_positives": [
+          "difficulty breathing"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "medication_accuracy": {
+        "expected": [
+          "paracetamol"
+        ],
+        "actual": [
+          "paracetamol"
+        ],
+        "true_positives": [
+          "paracetamol"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "duration_accuracy": {
+        "expected": [
+          "five days"
+        ],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [
+          "five days"
+        ],
+        "false_positives": [],
+        "recall": 0.0,
+        "precision": 1.0,
+        "f1": 0.0
+      },
+      "qualifier_accuracy": {
+        "per_symptom": [
+          {
+            "symptom": "cough",
+            "fields": {
+              "character": {
+                "expected": "productive",
+                "actual": "dry",
+                "match": false
+              }
+            }
+          }
+        ],
+        "aggregate": {
+          "character": 0.0
+        },
+        "overall_accuracy": 0.0
+      },
+      "pattern_detection": {
+        "expected": [],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "red_flag_detection": {
+        "expected": [],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "site_extraction": {
+        "count": 0,
+        "items": []
+      },
+      "ice_extraction": {
+        "count": 0,
+        "items": {
+          "ideas": [],
+          "concerns": [],
+          "expectations": []
+        }
+      }
+    },
+    "abdominal_pain_consultation": {
+      "symptom_extraction": {
+        "expected": [
+          "abdominal pain",
+          "nausea",
+          "bloating"
+        ],
+        "actual": [
+          "diarrhea",
+          "vomiting",
+          "nausea",
+          "pain"
+        ],
+        "true_positives": [
+          "nausea"
+        ],
+        "false_negatives": [
+          "abdominal pain",
+          "bloating"
+        ],
+        "false_positives": [
+          "diarrhea",
+          "vomiting",
+          "pain"
+        ],
+        "recall": 0.3333333333333333,
+        "precision": 0.25,
+        "f1": 0.28571428571428575
+      },
+      "negation_accuracy": {
+        "expected": [
+          "vomiting",
+          "diarrhea",
+          "blood in stool"
+        ],
+        "actual": [
+          "No vomiting",
+          "No diarrhea",
+          "No blood in the stool either"
+        ],
+        "true_positives": [
+          "vomiting",
+          "diarrhea"
+        ],
+        "false_negatives": [
+          "blood in stool"
+        ],
+        "false_positives": [
+          "No blood in the stool either"
+        ],
+        "recall": 0.6666666666666666,
+        "precision": 0.6666666666666666,
+        "f1": 0.6666666666666666
+      },
+      "medication_accuracy": {
+        "expected": [
+          "omeprazole"
+        ],
+        "actual": [
+          "omeprazole"
+        ],
+        "true_positives": [
+          "omeprazole"
+        ],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "duration_accuracy": {
+        "expected": [
+          "two weeks"
+        ],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [
+          "two weeks"
+        ],
+        "false_positives": [],
+        "recall": 0.0,
+        "precision": 1.0,
+        "f1": 0.0
+      },
+      "qualifier_accuracy": {
+        "per_symptom": [
+          {
+            "symptom": "abdominal pain",
+            "fields": {
+              "character": {
+                "expected": "cramping",
+                "actual": null,
+                "match": false
+              },
+              "pattern": {
+                "expected": "intermittent",
+                "actual": null,
+                "match": false
+              },
+              "laterality": {
+                "expected": "right",
+                "actual": null,
+                "match": false
+              },
+              "aggravating_factors": {
+                "expected": [
+                  "fatty meals"
+                ],
+                "actual": [],
+                "true_positives": [],
+                "false_negatives": [
+                  "fatty meals"
+                ],
+                "false_positives": [],
+                "recall": 0.0,
+                "precision": 1.0,
+                "f1": 0.0
+              }
+            }
+          }
+        ],
+        "aggregate": {
+          "character": 0.0,
+          "pattern": 0.0,
+          "laterality": 0.0,
+          "aggravating_factors": 0.0
+        },
+        "overall_accuracy": 0.0
+      },
+      "pattern_detection": {
+        "expected": [],
+        "actual": [
+          "gastroenteritis_like"
+        ],
+        "true_positives": [],
+        "false_negatives": [],
+        "false_positives": [
+          "gastroenteritis_like"
+        ],
+        "recall": 1.0,
+        "precision": 0.0,
+        "f1": 0.0
+      },
+      "red_flag_detection": {
+        "expected": [],
+        "actual": [],
+        "true_positives": [],
+        "false_negatives": [],
+        "false_positives": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "f1": 1.0
+      },
+      "site_extraction": {
+        "count": 0,
+        "items": []
+      },
+      "ice_extraction": {
+        "count": 1,
+        "items": {
+          "ideas": [],
+          "concerns": [],
+          "expectations": [
+            {
+              "text": "I would like to order an ultrasound of your abdomen. The sympto",
+              "seg_id": 14,
+              "speaker_id": "spk_0",
+              "t_start": 14.0
+            }
+          ]
+        }
+      }
+    }
+  },
+  "aggregate": {
+    "symptom_extraction_recall": 0.7778,
+    "negation_accuracy_recall": 0.7778,
+    "medication_accuracy_recall": 1.0,
+    "duration_accuracy_recall": 0.0,
+    "qualifier_accuracy_overall_accuracy": 0.0,
+    "pattern_detection_recall": 0.6667,
+    "red_flag_detection_recall": 1.0,
+    "overall_score": 0.6032
+  }
+}

@@ -410,4 +410,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="Enable AI overlay (overrides config)")
     p.add_argument("--no-ai", action="store_true", default=None,
                     help="Disable AI overlay (overrides config)")
+
+    # File input mode
+    p.add_argument("--input-file", type=str, default=None,
+                    metavar="PATH",
+                    help="Process an existing audio file (WAV) through the pipeline")
     return p

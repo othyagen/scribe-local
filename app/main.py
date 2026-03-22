@@ -13,6 +13,7 @@ import json
 import os
 import queue
 import select
+import shutil
 import signal
 import sys
 import threading
@@ -171,6 +172,9 @@ def process_speech_buffer(
     writer: OutputWriter,
     is_paragraph: bool,
     confidence_entries: list[dict] | None = None,
+    streaming_buffer: "StreamingBuffer | None" = None,
+    live_preview: "LivePreview | None" = None,
+    live_findings: "LiveFindings | None" = None,
 ) -> None:
     """Transcribe a speech buffer and commit all resulting segments."""
     audio = np.concatenate(speech_buffer)
@@ -194,10 +198,18 @@ def process_speech_buffer(
         norm_seg, changes = normalizer.normalize(raw_seg)
         writer.add_normalized(norm_seg, changes)
 
-        # 5. Real-time display
-        _display_segment(norm_seg.to_txt_line(), changes)
+        # 5. Push to streaming buffer (if enabled)
+        if streaming_buffer is not None:
+            streaming_buffer.append_segment(norm_seg.to_dict())
 
-        # 6. Accumulate confidence metrics (if tracking)
+        # 6. Live preview (if enabled)
+        if live_preview is not None:
+            live_preview.print_segment(norm_seg.to_dict())
+        else:
+            # Fallback to original display
+            _display_segment(norm_seg.to_txt_line(), changes)
+
+        # 7. Accumulate confidence metrics (if tracking)
         if confidence_entries is not None:
             confidence_entries.append({
                 "seg_id": raw_seg.seg_id,
@@ -207,6 +219,10 @@ def process_speech_buffer(
                 "no_speech_prob": result.no_speech_prob,
                 "compression_ratio": result.compression_ratio,
             })
+
+    # 8. Incremental findings extraction (if enabled)
+    if live_findings is not None:
+        live_findings.process_new_segments()
 
     if is_paragraph:
         committer.new_paragraph()
@@ -1495,6 +1511,275 @@ def _reprocess_all(config: AppConfig, args: object) -> None:
     print(f"  Failed:    {failed}")
 
 
+# ── file-input mode ──────────────────────────────────────────────────
+
+def _run_file_input(config: AppConfig, args: object, input_file: str) -> None:
+    """Process an existing audio file through the SCRIBE pipeline."""
+    input_path = Path(input_file)
+
+    # Validate
+    if not input_path.exists():
+        print(f"Error: file not found: {input_file}", file=sys.stderr)
+        sys.exit(1)
+    if input_path.suffix.lower() != ".wav":
+        print(
+            f"Error: unsupported format '{input_path.suffix}' — only .wav supported",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Read WAV
+    with wave.open(str(input_path), "rb") as wf:
+        file_rate = wf.getframerate()
+        n_channels = wf.getnchannels()
+        frames = wf.readframes(wf.getnframes())
+    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    if n_channels > 1:
+        audio = audio.reshape(-1, n_channels)[:, 0]
+
+    duration_sec = len(audio) / file_rate
+    sample_rate = config.audio.sample_rate
+
+    print(f"Input file      : {input_path}")
+    print(f"Duration        : {duration_sec:.1f}s")
+    if file_rate != sample_rate:
+        print(f"Note: sample rate {file_rate} Hz (pipeline expects {sample_rate})")
+    print(f"Language        : {config.language}")
+    print(f"ASR model       : {config.asr.model}")
+    print(f"Output dir      : {config.output_dir}")
+    print()
+
+    # Init components
+    print("Loading ASR model...")
+    asr_engine = ASREngine(config)
+    print(f"ASR device      : {asr_engine.device}")
+
+    normalizer = Normalizer(config)
+    diarizer = create_diarizer(config)
+    committer = SegmentCommitter(asr_engine.model_name, config.language)
+    writer = OutputWriter(config.output_dir, asr_engine.model_name)
+    confidence_entries: list[dict] = []
+
+    # Transcribe full file
+    print("Transcribing...")
+    asr_results = asr_engine.transcribe(audio)
+    speaker_id = diarizer.identify_speaker(audio, file_rate)
+
+    # Commit segments through the normal pipeline
+    normalized_list: list[dict] = []
+    for result in asr_results:
+        raw_seg = committer.commit(result.start, result.end, speaker_id, result.text)
+        writer.append_raw(raw_seg)
+        norm_seg, changes = normalizer.normalize(raw_seg)
+        writer.add_normalized(norm_seg, changes)
+        normalized_list.append(norm_seg.to_dict())
+        _display_segment(norm_seg.to_txt_line(), changes)
+        confidence_entries.append({
+            "seg_id": raw_seg.seg_id, "t0": raw_seg.t0, "t1": raw_seg.t1,
+            "avg_logprob": result.avg_logprob,
+            "no_speech_prob": result.no_speech_prob,
+            "compression_ratio": result.compression_ratio,
+        })
+
+    # Finalize writer (writes normalized + changes JSON)
+    writer.finalize(timeout=5.0)
+    session_ts = writer.raw_json_path.stem[4:23]
+
+    # Copy audio to output dir
+    wav_dest = Path(config.output_dir) / f"audio_{session_ts}.wav"
+    shutil.copy2(str(input_path), str(wav_dest))
+
+    print()
+    print("-" * 60)
+    print(f"Segments committed : {committer.seg_count}")
+    print(f"Session            : {session_ts}")
+    print(f"RAW output         : {writer.raw_json_path}")
+    print(f"Normalized output  : {writer.normalized_json_path}")
+    print(f"Audio              : {wav_dest}")
+
+    # ── post-session diarization ────────────────────────────────────
+    diar_path = None
+    if config.diarization.backend == "pyannote":
+        print(f"[{_ts()}] Running pyannote diarization...")
+        try:
+            diar_path = run_pyannote_diarization(wav_dest, config.output_dir)
+            print(f"[{_ts()}] Diarization complete.")
+        except Exception as e:
+            print(f"[{_ts()}] Diarization failed: {e}")
+
+    # Smoothing
+    turns_before = None
+    turns_after = None
+    if diar_path and config.diarization.smoothing:
+        with open(diar_path, encoding="utf-8") as f:
+            diar_data = json.load(f)
+        turns_before = len(diar_data["turns"])
+        diar_data["turns"] = smooth_turns(
+            diar_data["turns"],
+            config.diarization.min_turn_sec,
+            config.diarization.gap_merge_sec,
+        )
+        turns_after = len(diar_data["turns"])
+        with open(diar_path, "w", encoding="utf-8") as f:
+            json.dump(diar_data, f, ensure_ascii=False, indent=2)
+        print(f"[{_ts()}] Smoothed: {turns_before} → {turns_after} turns.")
+
+    # ── relabeling ──────────────────────────────────────────────────
+    diarized_json = None
+    diarized_txt = None
+    if diar_path:
+        try:
+            diarized_json, diarized_txt = relabel_segments(
+                writer.normalized_json_path, diar_path, config.output_dir
+            )
+            print(f"Diarized segments  : {diarized_json}")
+        except Exception as e:
+            print(f"[{_ts()}] Relabeling failed: {e}")
+
+    # ── subtitle export ─────────────────────────────────────────────
+    srt_path = None
+    vtt_path = None
+    export_srt = getattr(args, "export_srt", False)
+    export_vtt = getattr(args, "export_vtt", False)
+    if (export_srt or export_vtt) and diarized_json:
+        from app.export_subtitles import write_srt, write_vtt
+        with open(diarized_json, encoding="utf-8") as f:
+            diar_segs = json.load(f)
+        text_by_seg = {s["seg_id"]: s.get("normalized_text", "") for s in normalized_list}
+        subtitle_segs = [
+            {
+                "t0": ds["t0"], "t1": ds["t1"],
+                "speaker": ds["new_speaker_id"],
+                "text": text_by_seg.get(ds["seg_id"], ""),
+            }
+            for ds in diar_segs
+        ]
+        if export_srt:
+            srt_path = write_srt(subtitle_segs, config.output_dir, session_ts)
+            print(f"SRT subtitles      : {srt_path}")
+        if export_vtt:
+            vtt_path = write_vtt(subtitle_segs, config.output_dir, session_ts)
+            print(f"VTT subtitles      : {vtt_path}")
+
+    # ── clinical note export ────────────────────────────────────────
+    clinical_note_path = None
+    if getattr(args, "export_clinical_note", False):
+        from app.export_clinical_note import (
+            load_template, write_clinical_note, _template_needs_roles,
+        )
+        template_id = _resolve_template_id(args)
+        try:
+            template = load_template(template_id)
+            cn_roles = None
+            if _template_needs_roles(template):
+                from app.role_detection import detect_speaker_roles
+                cn_roles = detect_speaker_roles(normalized_list, config.language)
+            from app.review_flags import generate_review_flags
+            review_flags = generate_review_flags(
+                normalized_list, confidence_entries=confidence_entries or None,
+            )
+            from app.symptom_timeline import extract_symptom_timeline
+            timeline = extract_symptom_timeline(normalized_list)
+            from app.diagnostic_hints import generate_diagnostic_hints
+            from app.extractors import extract_symptoms, extract_negations
+            _full_text = " ".join(
+                s.get("normalized_text", "") for s in normalized_list
+            )
+            hints = generate_diagnostic_hints(
+                extract_symptoms(_full_text), extract_negations(_full_text),
+            )
+            clinical_note_path = write_clinical_note(
+                normalized_list, template, config.output_dir, session_ts,
+                template_id, speaker_roles=cn_roles, review_flags=review_flags,
+                symptom_timeline=timeline, diagnostic_hints=hints,
+            )
+            print(f"Clinical note      : {clinical_note_path}")
+        except FileNotFoundError as e:
+            print(f"[{_ts()}] Clinical note export failed: {e}")
+
+    # Multi-template clinical note export
+    clinical_note_paths: list[Path] = []
+    multi_template_ids = _parse_export_notes(args)
+    if multi_template_ids:
+        try:
+            from app.symptom_timeline import extract_symptom_timeline
+            fi_timeline = extract_symptom_timeline(normalized_list)
+            from app.diagnostic_hints import generate_diagnostic_hints
+            from app.extractors import extract_symptoms, extract_negations
+            _fi_text = " ".join(
+                s.get("normalized_text", "") for s in normalized_list
+            )
+            fi_hints = generate_diagnostic_hints(
+                extract_symptoms(_fi_text), extract_negations(_fi_text),
+            )
+            clinical_note_paths = _export_multi_notes(
+                multi_template_ids, normalized_list,
+                config.output_dir, session_ts, config.language,
+                confidence_entries=confidence_entries or None,
+                symptom_timeline=fi_timeline, diagnostic_hints=fi_hints,
+            )
+            for p in clinical_note_paths:
+                print(f"Clinical note      : {p}")
+        except FileNotFoundError as e:
+            print(f"[{_ts()}] Clinical note export failed: {e}")
+
+    # ── confidence report ───────────────────────────────────────────
+    confidence_report_path = None
+    if confidence_entries:
+        from app.confidence import build_confidence_report, write_confidence_report
+        report = build_confidence_report(confidence_entries)
+        confidence_report_path = write_confidence_report(
+            report, config.output_dir, session_ts,
+        )
+        print(
+            f"Confidence         : "
+            f"{report['flagged_count']}/{report['total_count']} flagged"
+        )
+
+    # ── session report ──────────────────────────────────────────────
+    if config.reporting.session_report_enabled:
+        from app.reporting import build_session_report, write_session_report
+        output_paths = {
+            "raw": str(writer.raw_json_path),
+            "normalized": str(writer.normalized_json_path),
+            "changes": str(writer.changes_json_path),
+            "audio": str(wav_dest),
+            "diarization": str(diar_path) if diar_path else None,
+            "diarized_segments": str(diarized_json) if diarized_json else None,
+            "diarized_txt": str(diarized_txt) if diarized_txt else None,
+            "confidence_report": str(confidence_report_path) if confidence_report_path else None,
+            "srt": str(srt_path) if srt_path else None,
+            "vtt": str(vtt_path) if vtt_path else None,
+            "clinical_note": str(clinical_note_path) if clinical_note_path else None,
+            "clinical_notes": [str(p) for p in clinical_note_paths] if clinical_note_paths else None,
+        }
+        diar_stats = {
+            "turns_before_smoothing": turns_before,
+            "turns_after_smoothing": turns_after,
+        }
+        sr = build_session_report(
+            session_ts=session_ts, config=config,
+            segment_count=committer.seg_count,
+            output_paths=output_paths,
+            diarization_stats=diar_stats,
+        )
+        sr["file_input"] = {
+            "source": str(input_path),
+            "duration_sec": round(duration_sec, 2),
+            "sample_rate": file_rate,
+        }
+        report_path = write_session_report(sr, config.output_dir, session_ts)
+        print(f"Session report     : {report_path}")
+
+        if getattr(args, "export_summary", False):
+            from app.export_summary import write_summary
+            summary_path = write_summary(sr, config.output_dir, session_ts)
+            print(f"Session summary    : {summary_path}")
+
+    print("-" * 60)
+    print("File processing complete.")
+
+
 # ── entry point ──────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1673,6 +1958,15 @@ def main() -> None:
         except ReprocessError as e:
             print(f"Error: {e}")
             sys.exit(1)
+        sys.exit(0)
+
+    # --input-file: process existing audio file and exit
+    input_file = getattr(args, "input_file", None)
+    if input_file:
+        if getattr(args, "resume", None) or args.session:
+            print("Error: --input-file cannot be used with --resume or --session")
+            sys.exit(1)
+        _run_file_input(config, args, input_file)
         sys.exit(0)
 
     # Mutual exclusion: --resume and --session

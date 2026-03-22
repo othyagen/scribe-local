@@ -391,3 +391,86 @@ class TestCLI:
         from tools.generate_synthetic_cases import main
         ret = main(["--case", "nonexistent"])
         assert ret == 1
+
+    def test_explain_flag(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--explain"])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "How It Works" in out
+        assert "Step 1" in out
+        assert "audio.wav" in out
+
+    def test_show_requires_case(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--show"])
+        assert ret == 1
+        err = capsys.readouterr().err
+        assert "--show requires --case" in err
+
+    def test_open_requires_case(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--open"])
+        assert ret == 1
+        err = capsys.readouterr().err
+        assert "--open requires --case" in err
+
+    def test_show_missing_case(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--show", "--case", "chest_pain_consultation",
+                     "--output-dir", "nonexistent_dir_12345"])
+        assert ret == 1
+        err = capsys.readouterr().err
+        assert "Case not found" in err
+
+    def test_open_missing_case(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--open", "--case", "chest_pain_consultation",
+                     "--output-dir", "nonexistent_dir_12345"])
+        assert ret == 1
+        err = capsys.readouterr().err
+        assert "Case not found" in err
+
+    @pytest.mark.skipif(not _TTS_AVAILABLE, reason="pyttsx3 not available")
+    def test_show_existing_case(self, tmp_path, capsys):
+        from tools.generate_synthetic_cases import main
+        # Generate first
+        main(["--case", "chest_pain_consultation",
+              "--output-dir", str(tmp_path)])
+        capsys.readouterr()  # clear output
+        # Then show
+        ret = main(["--show", "--case", "chest_pain_consultation",
+                     "--output-dir", str(tmp_path)])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "chest_pain_consultation" in out
+        assert "audio.wav" in out
+        assert "Ground truth" in out
+
+    def test_list_shows_columns(self, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--list"])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "turns" in out
+        assert "symptoms" in out
+
+    @pytest.mark.skipif(not _TTS_AVAILABLE, reason="pyttsx3 not available")
+    def test_single_case_prints_summary(self, tmp_path, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--case", "chest_pain_consultation",
+                     "--output-dir", str(tmp_path)])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Case ID:" in out
+        assert "chest_pain_consultation" in out
+        assert "Ground truth:" in out
+
+    @pytest.mark.skipif(not _TTS_AVAILABLE, reason="pyttsx3 not available")
+    def test_batch_prints_summary(self, tmp_path, capsys):
+        from tools.generate_synthetic_cases import main
+        ret = main(["--output-dir", str(tmp_path)])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Generated" in out
+        assert "case(s)" in out

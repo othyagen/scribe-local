@@ -4,7 +4,29 @@
       "Bash(python:*)",
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(gh auth status:*)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(git push:*)",
+      "Bash(echo:*)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_calibration.py -v)",
+      "Bash(.venv/Scripts/python -m pytest tests/ -v)",
+      "Bash(.venv/Scripts/python -m pytest:*)",
+      "Bash(ls:*)",
+      "Bash(git tag:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(git status:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(pip install:*)",
+      "Bash(for f in tests/test_clean_diarized.py tests/test_diarization.py tests/test_integration_pipeline.py tests/test_merge.py tests/test_multi_note_export.py tests/test_relabel.py tests/test_reprocess.py tests/test_reprocess_all.py tests/test_resume.py tests/test_smoothing.py tests/test_synthetic_cases.py tests/test_wav_export.py)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)"
     ]
   }
 }

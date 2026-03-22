@@ -1,0 +1,42 @@
+case_id: synthea_p1
+title: 65-year-old male with cough and fever
+segments:
+- seg_id: seg_0001
+  t0: 0.0
+  t1: 3.0
+  speaker_id: spk_0
+  normalized_text: 65-year-old male presenting with cough and fever for 3 days.
+- seg_id: seg_0002
+  t0: 3.0
+  t1: 6.0
+  speaker_id: spk_0
+  normalized_text: Reports shortness of breath.
+- seg_id: seg_0003
+  t0: 6.0
+  t1: 9.0
+  speaker_id: spk_0
+  normalized_text: Has history of hypertension.
+- seg_id: seg_0004
+  t0: 9.0
+  t1: 12.0
+  speaker_id: spk_0
+  normalized_text: Currently taking lisinopril.
+ground_truth:
+  expected_hypotheses:
+  - pneumonia
+  key_findings:
+  - cough
+  - fever
+  - shortness of breath
+  red_flags:
+  - shortness of breath
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+meta:
+  source: synthea
+  original_id: p1
+  tags:
+  - pneumonia
+  - hypertension

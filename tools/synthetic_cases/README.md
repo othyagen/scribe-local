@@ -15,6 +15,58 @@ python -m tools.generate_synthetic_cases --case chest_pain_consultation
 python -m tools.generate_synthetic_cases --list
 ```
 
+## Quick Start: Testing SCRIBE with Synthetic Cases
+
+**1. Generate a case and inspect the output:**
+
+```bash
+python -m tools.generate_synthetic_cases --case chest_pain_consultation
+python -m tools.generate_synthetic_cases --case chest_pain_consultation --show
+```
+
+**2. Listen to the generated audio:**
+
+```bash
+python -m tools.generate_synthetic_cases --case chest_pain_consultation --play
+```
+
+**3. Run SCRIBE extraction on the reference transcript (no ASR needed):**
+
+```python
+import json
+from app.clinical_state import build_clinical_state
+
+meta = json.loads(open("test_data/synthetic/chest_pain_consultation/meta.json").read())
+segments = [
+    {"seg_id": f"seg_{i:04d}", "t0": s["t0"], "t1": s["t1"],
+     "speaker_id": s["speaker_id"], "normalized_text": s["text"]}
+    for i, s in enumerate(meta["segments"])
+]
+state = build_clinical_state(segments)
+print("Symptoms:", state["symptoms"])
+print("Negations:", state["negations"])
+```
+
+**4. Compare against ground truth:**
+
+```bash
+type test_data/synthetic/chest_pain_consultation/ground_truth.json
+```
+
+**5. Try different audio environments:**
+
+```bash
+python -m tools.generate_synthetic_cases --case chest_pain_consultation --env telephone
+python -m tools.generate_synthetic_cases --case chest_pain_consultation --env noisy
+python -m tools.generate_synthetic_cases --patient-distance far
+```
+
+**6. Learn more about the workflow:**
+
+```bash
+python -m tools.generate_synthetic_cases --explain
+```
+
 ## Output Structure
 
 Each case generates four files:
@@ -102,6 +154,9 @@ print("Medications:", state["medications"])
 | `--pause` | `0.8` | Pause between turns (seconds) |
 | `--seed` | `42` | Random seed for reproducibility |
 | `--play` | off | Play back after generation |
+| `--show` | off | Show case folder contents and ground truth summary |
+| `--open` | off | Open case folder in system file browser |
+| `--explain` | off | Print step-by-step workflow guide |
 
 ## Extending
 

@@ -282,6 +282,112 @@ class TestPericarditisRule:
         assert "Acute coronary syndrome" in conditions
 
 
+# ── costochondritis rule ──────────────────────────────────────────────
+
+
+def _costochondritis_qualifiers():
+    """Qualifier list matching the costochondritis pattern."""
+    return [
+        {
+            "symptom": "chest pain",
+            "qualifiers": {
+                "character": "sharp",
+                "aggravating_factors": ["movement"],
+            },
+        },
+    ]
+
+
+class TestCostochondritisRule:
+    def test_fires_with_sharp_and_movement(self):
+        symptoms = ["chest pain"]
+        hints = generate_diagnostic_hints(
+            symptoms, qualifiers=_costochondritis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" in conditions
+        costo = next(h for h in hints if h["condition"] == "Costochondritis")
+        assert costo["snomed_code"] == "64109004"
+        assert costo["evidence"] == ["chest pain"]
+
+    def test_does_not_fire_without_qualifiers(self):
+        hints = generate_diagnostic_hints(["chest pain"])
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" not in conditions
+
+    def test_does_not_fire_wrong_character(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "pressure-like",
+                    "aggravating_factors": ["movement"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" not in conditions
+
+    def test_does_not_fire_missing_aggravating(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "sharp",
+                    "aggravating_factors": [],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" not in conditions
+
+    def test_does_not_fire_wrong_aggravating(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "sharp",
+                    "aggravating_factors": ["deep breathing"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" not in conditions
+
+    def test_does_not_fire_without_chest_pain_symptom(self):
+        hints = generate_diagnostic_hints(
+            ["pain"], qualifiers=_costochondritis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" not in conditions
+
+    def test_no_overlap_with_pericarditis(self):
+        """Pericarditis qualifiers should not trigger costochondritis."""
+        hints = generate_diagnostic_hints(
+            ["chest pain"], qualifiers=_pericarditis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" in conditions
+        assert "Costochondritis" not in conditions
+
+    def test_case_insensitive(self):
+        quals = [
+            {
+                "symptom": "Chest Pain",
+                "qualifiers": {
+                    "character": "Sharp",
+                    "aggravating_factors": ["Movement"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Costochondritis" in conditions
+
+
 # ── negation suppression ─────────────────────────────────────────────
 
 

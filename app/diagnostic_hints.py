@@ -43,6 +43,17 @@ RULES: list[dict] = [
         },
     },
     {
+        "symptoms": ["chest pain"],
+        "condition": "Costochondritis",
+        "snomed": "64109004",
+        "qualifiers": {
+            "chest pain": {
+                "character": ["sharp"],
+                "aggravating_factors": ["movement"],
+            },
+        },
+    },
+    {
         "symptoms": ["chest pain", "dyspnea"],
         "condition": "Acute coronary syndrome",
         "snomed": "394659003",

@@ -209,6 +209,44 @@ def cmd_cases_create(args: argparse.Namespace) -> None:
     print(_CASE_TEMPLATE)
 
 
+def cmd_cases_slice(args: argparse.Namespace) -> None:
+    """Score all cases and slice results by a metadata field."""
+    from app.case_registry import build_registry
+    from app.case_scoring import score_case_run
+    from app.case_system import load_case
+    from app.evaluation_slicing import slice_evaluation
+
+    case_dirs = _get_case_dirs(args)
+    entries = build_registry(case_dirs)
+
+    if not entries:
+        print("No cases found.")
+        return
+
+    results = []
+    for entry in entries:
+        case = load_case(entry.path)
+        scored = score_case_run(case)
+        results.append({"case": case, "score": scored["score"]})
+
+    sliced = slice_evaluation(results, args.by)
+
+    if not sliced:
+        print("No groups found.")
+        return
+
+    # Sort by score ascending (lowest first).
+    sorted_groups = sorted(sliced.items(), key=lambda kv: kv[1])
+
+    header = f"{'GROUP':<30} {'HIT_RATE':>10}"
+    print(f"Slicing by: {args.by}\n")
+    print(header)
+    print("-" * len(header))
+    for group, rate in sorted_groups:
+        print(f"{group:<30} {rate:>10.2%}")
+    print(f"\n{len(sorted_groups)} group(s).")
+
+
 # ── run subcommand ─────────────────────────────────────────────────
 
 
@@ -333,6 +371,15 @@ def build_parser() -> argparse.ArgumentParser:
     # cases create
     create_p = cases_sub.add_parser("create", help="Print YAML case template")
     create_p.set_defaults(func=cmd_cases_create)
+
+    # cases slice
+    slice_p = cases_sub.add_parser("slice", help="Slice evaluation results by metadata field")
+    slice_p.add_argument(
+        "--by", required=True,
+        choices=["organ_system", "presenting_complaint", "difficulty", "origin", "tag"],
+        help="Metadata field to group by",
+    )
+    slice_p.set_defaults(func=cmd_cases_slice)
 
     # ── run ──
     run_p = subparsers.add_parser("run", help="Run a case through the pipeline")

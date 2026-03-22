@@ -154,6 +154,59 @@ class TestCasesCreate:
         assert "ground_truth:" in out
 
 
+# ── cases slice ───────────────────────────────────────────────
+
+
+class TestCasesSlice:
+    def test_slice_by_difficulty(self, tmp_path, capsys):
+        _write_case(
+            tmp_path, "easy_01",
+            meta={"difficulty": "easy", "tags": []},
+            ground_truth={"expected_hypotheses": []},
+        )
+        _write_case(
+            tmp_path, "hard_01",
+            meta={"difficulty": "hard", "tags": []},
+            ground_truth={"expected_hypotheses": []},
+        )
+        main(["--case-dir", str(tmp_path), "cases", "slice", "--by", "difficulty"])
+        out = capsys.readouterr().out
+        assert "Slicing by: difficulty" in out
+        assert "easy" in out
+        assert "hard" in out
+        assert "group(s)" in out
+
+    def test_slice_by_organ_system(self, tmp_path, capsys):
+        _write_case(
+            tmp_path, "resp_01",
+            classification={"organ_systems": ["respiratory"]},
+            ground_truth={"expected_hypotheses": []},
+        )
+        main(["--case-dir", str(tmp_path), "cases", "slice", "--by", "organ_system"])
+        out = capsys.readouterr().out
+        assert "respiratory" in out
+
+    def test_slice_by_tag(self, tmp_path, capsys):
+        _write_case(
+            tmp_path, "tagged_01",
+            meta={"tags": ["infection", "acute"]},
+            ground_truth={"expected_hypotheses": []},
+        )
+        main(["--case-dir", str(tmp_path), "cases", "slice", "--by", "tag"])
+        out = capsys.readouterr().out
+        assert "infection" in out
+        assert "acute" in out
+
+    def test_slice_no_cases(self, tmp_path, capsys):
+        main(["--case-dir", str(tmp_path), "cases", "slice", "--by", "difficulty"])
+        out = capsys.readouterr().out
+        assert "No cases found" in out
+
+    def test_slice_invalid_field(self, tmp_path):
+        with pytest.raises(SystemExit):
+            main(["--case-dir", str(tmp_path), "cases", "slice", "--by", "bogus"])
+
+
 # ── run ────────────────────────────────────────────────────────────
 
 

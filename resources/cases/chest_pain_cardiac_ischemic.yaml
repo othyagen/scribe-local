@@ -1,0 +1,69 @@
+case_id: chest_pain_cardiac_ischemic_01
+title: Cardiac ischemic chest pain — ACS presentation
+description: >
+  62-year-old male with substernal pressure radiating to left arm,
+  worse with exertion, relieved by rest, diaphoretic, short of breath.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "62-year-old male with chest pain described as pressure for 2 hours."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain radiates to the left arm."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse with exertion and relieved by rest."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "Patient is diaphoretic and reports shortness of breath."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Denies cough. Denies fever."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Acute coronary syndrome
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+    - dyspnea
+
+classification:
+  organ_systems: [cardiovascular]
+  presenting_complaints: [chest pain]
+  diagnosis_targets:
+    icd10:
+      - code: "I21.9"
+        display: "Acute myocardial infarction, unspecified"
+    snomed:
+      - code: "394659003"
+        display: "Acute coronary syndrome"
+
+patient:
+  age: 62
+  sex: male
+
+meta:
+  tags: [cardiac, chest_pain, cardiac_ischemic]
+  difficulty: easy
+  source: synthetic
+  notes: >
+    Classic ACS presentation. Pipeline coverage: ACS rule fires
+    (chest pain + dyspnea). Full match expected.

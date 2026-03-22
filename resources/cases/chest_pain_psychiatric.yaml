@@ -1,0 +1,75 @@
+case_id: chest_pain_psychiatric_01
+title: Psychiatric chest pain — panic disorder presentation
+description: >
+  24-year-old female with episodic chest pain, palpitations, anxiety,
+  dizziness, tingling in hands, insomnia.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "24-year-old female with chest pain and palpitations that come and go."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "She reports anxiety and dizziness during episodes."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Tingling and numbness in both hands during episodes."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "She also reports insomnia for the past month."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Denies fever. Denies cough. Breathing is normal."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Panic disorder
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+    - palpitations
+    - anxiety
+    - dizziness
+    - tingling
+    - insomnia
+
+classification:
+  organ_systems: [psychiatric]
+  presenting_complaints: [chest pain, palpitations, anxiety]
+  diagnosis_targets:
+    icd10:
+      - code: "F41.0"
+        display: "Panic disorder"
+    snomed:
+      - code: "371631005"
+        display: "Panic disorder"
+
+patient:
+  age: 24
+  sex: female
+
+meta:
+  tags: [psychiatric, chest_pain]
+  difficulty: moderate
+  source: synthetic
+  notes: >
+    Panic disorder with classic autonomic features.
+    Pipeline coverage: GAD rule fires (anxiety + palpitations + insomnia)
+    but title is "Generalised anxiety disorder", not "Panic disorder".
+    Expected hypothesis_hit_rate 0%.

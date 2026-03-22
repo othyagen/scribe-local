@@ -1,0 +1,70 @@
+case_id: chest_pain_gastrointestinal_01
+title: Gastrointestinal chest pain — GERD presentation
+description: >
+  51-year-old male with burning chest pain worse after eating and
+  lying down, nausea, relieved by antacids.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "51-year-old male with burning chest pain for 3 weeks."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse after eating and when lying down."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Patient also reports nausea."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "Pain is relieved by antacids."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Denies fever. Denies vomiting. Breathing is normal."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Gastroesophageal reflux
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+    - nausea
+
+classification:
+  organ_systems: [gastrointestinal]
+  presenting_complaints: [chest pain]
+  diagnosis_targets:
+    icd10:
+      - code: "K21.0"
+        display: "Gastro-oesophageal reflux disease with oesophagitis"
+    snomed:
+      - code: "235595009"
+        display: "Gastroesophageal reflux disease"
+
+patient:
+  age: 51
+  sex: male
+
+meta:
+  tags: [gastrointestinal, chest_pain]
+  difficulty: easy
+  source: synthetic
+  notes: >
+    Classic GERD presentation with postprandial and positional worsening.
+    Pipeline coverage: no Gastroesophageal reflux rule in diagnostic_hints.
+    No rule fires (dyspnea negated). Expected hypothesis_hit_rate 0%.

@@ -1,0 +1,72 @@
+case_id: chest_pain_pulmonary_pleuritic_01
+title: Pulmonary pleuritic chest pain — PE presentation
+description: >
+  28-year-old female with sudden sharp chest pain worse with breathing,
+  short of breath, recent long-haul flight, calf swelling.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "28-year-old female with sudden sharp chest pain that started 3 hours ago."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse with deep breathing."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Patient reports shortness of breath."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "She returned from a 12-hour flight 2 days ago and noticed swelling in her right calf."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Denies cough. Denies fever. Denies nausea."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Pulmonary embolism
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+    - dyspnea
+    - swelling
+
+classification:
+  organ_systems: [pulmonary, vascular]
+  presenting_complaints: [chest pain, dyspnea]
+  diagnosis_targets:
+    icd10:
+      - code: "I26.9"
+        display: "Pulmonary embolism without acute cor pulmonale"
+    snomed:
+      - code: "59282003"
+        display: "Pulmonary embolism"
+
+patient:
+  age: 28
+  sex: female
+
+meta:
+  tags: [pulmonary, chest_pain, pulmonary_pleuritic]
+  difficulty: moderate
+  source: synthetic
+  notes: >
+    PE presentation with pleuritic pain and DVT risk factors.
+    Pipeline coverage: no Pulmonary embolism rule in diagnostic_hints.
+    ACS rule will fire (chest pain + dyspnea) but is clinically wrong.
+    Expected hypothesis_hit_rate 0%.

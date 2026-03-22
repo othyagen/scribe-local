@@ -1,0 +1,64 @@
+case_id: chest_pain_musculoskeletal_01
+title: Musculoskeletal chest pain — costochondritis presentation
+description: >
+  45-year-old female with sharp localized chest pain worse with movement
+  and pressing on chest wall, recent heavy lifting.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "45-year-old female with sharp chest pain on the left side for 2 days."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse with movement and when pressing on the chest wall."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "She was lifting heavy boxes 3 days ago."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "Denies fever. Denies nausea. Breathing is normal."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Costochondritis
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+
+classification:
+  organ_systems: [musculoskeletal]
+  presenting_complaints: [chest pain]
+  diagnosis_targets:
+    icd10:
+      - code: "M94.0"
+        display: "Chondrocostal junction syndrome"
+    snomed:
+      - code: "64109004"
+        display: "Costochondritis"
+
+patient:
+  age: 45
+  sex: female
+
+meta:
+  tags: [musculoskeletal, chest_pain]
+  difficulty: easy
+  source: synthetic
+  notes: >
+    Classic costochondritis with reproducible tenderness and mechanical trigger.
+    Pipeline coverage: no Costochondritis rule in diagnostic_hints.
+    No rule fires (dyspnea negated). Expected hypothesis_hit_rate 0%.

@@ -1,0 +1,70 @@
+case_id: chest_pain_cardiac_non_ischemic_01
+title: Cardiac non-ischemic chest pain — pericarditis presentation
+description: >
+  34-year-old male with sharp chest pain worse lying down and with
+  deep breathing, better leaning forward, recent viral illness with fever.
+
+segments:
+  - seg_id: seg_0001
+    t0: 0.0
+    t1: 3.0
+    speaker_id: spk_0
+    normalized_text: "34-year-old male with sharp chest pain for 1 day."
+  - seg_id: seg_0002
+    t0: 3.0
+    t1: 6.0
+    speaker_id: spk_0
+    normalized_text: "Pain is worse with deep breathing and when lying down."
+  - seg_id: seg_0003
+    t0: 6.0
+    t1: 9.0
+    speaker_id: spk_0
+    normalized_text: "Pain is better when leaning forward."
+  - seg_id: seg_0004
+    t0: 9.0
+    t1: 12.0
+    speaker_id: spk_0
+    normalized_text: "Had a fever and cough last week that resolved."
+  - seg_id: seg_0005
+    t0: 12.0
+    t1: 15.0
+    speaker_id: spk_0
+    normalized_text: "Denies nausea. Breathing is normal."
+
+config:
+  mode: assist
+  update_strategy: manual
+  show_questions: true
+
+ground_truth:
+  expected_hypotheses:
+    - Pericarditis
+  red_flags:
+    - chest pain
+  key_findings:
+    - chest pain
+    - fever
+
+classification:
+  organ_systems: [cardiovascular]
+  presenting_complaints: [chest pain]
+  diagnosis_targets:
+    icd10:
+      - code: "I30.9"
+        display: "Acute pericarditis, unspecified"
+    snomed:
+      - code: "3238004"
+        display: "Pericarditis"
+
+patient:
+  age: 34
+  sex: male
+
+meta:
+  tags: [cardiac, chest_pain, cardiac_non_ischemic]
+  difficulty: moderate
+  source: synthetic
+  notes: >
+    Pericarditis presentation with positional and pleuritic features.
+    Pipeline coverage: no Pericarditis rule in diagnostic_hints.
+    Expected hypothesis_hit_rate 0%.

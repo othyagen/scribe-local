@@ -35,6 +35,21 @@ ground_truth:
     - urinary frequency
     - abdominal pain
 
+classification:
+  organ_systems: [urinary]
+  presenting_complaints: [dysuria, urinary frequency]
+  diagnosis_targets:
+    icd10:
+      - code: "N39.0"
+        display: "Urinary tract infection, site not specified"
+    snomed:
+      - code: "68566005"
+        display: "Urinary tract infectious disease"
+
+patient:
+  age: 42
+  sex: female
+
 meta:
   tags: [urinary, infection]
   difficulty: easy

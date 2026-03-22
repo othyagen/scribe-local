@@ -41,6 +41,21 @@ answer_script:
     value: "3 days"
     related: cough
 
+classification:
+  organ_systems: [respiratory]
+  presenting_complaints: [cough, dyspnea]
+  diagnosis_targets:
+    icd10:
+      - code: "J18.9"
+        display: "Pneumonia, unspecified"
+    snomed:
+      - code: "233604007"
+        display: "Pneumonia"
+
+patient:
+  age: 65
+  sex: male
+
 meta:
   tags: [respiratory, infection]
   difficulty: easy

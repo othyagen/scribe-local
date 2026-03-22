@@ -51,6 +51,21 @@ answer_script:
     value: "2 hours"
     related: chest pain
 
+classification:
+  organ_systems: [cardiovascular]
+  presenting_complaints: [chest pain]
+  diagnosis_targets:
+    icd10:
+      - code: "I20.9"
+        display: "Angina pectoris, unspecified"
+    snomed:
+      - code: "194828000"
+        display: "Angina pectoris"
+
+patient:
+  age: 58
+  sex: male
+
 meta:
   tags: [cardiac, emergency]
   difficulty: moderate

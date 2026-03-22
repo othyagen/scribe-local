@@ -24,7 +24,7 @@ segments:
     t0: 9.0
     t1: 12.0
     speaker_id: spk_0
-    normalized_text: "Had a fever and cough last week that resolved."
+    normalized_text: "He was sick with a viral illness last week that resolved."
   - seg_id: seg_0005
     t0: 12.0
     t1: 15.0
@@ -43,7 +43,6 @@ ground_truth:
     - chest pain
   key_findings:
     - chest pain
-    - fever
 
 classification:
   organ_systems: [cardiovascular]

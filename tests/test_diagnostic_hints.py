@@ -503,6 +503,81 @@ class TestGastroesophagealRefluxRule:
         assert "Gastroesophageal reflux" in conditions
 
 
+# ── panic disorder rule ───────────────────────────────────────────────
+
+
+class TestPanicDisorderRule:
+    def test_fires_with_full_cluster(self):
+        """All 5 panic symptoms present → fires with 5 evidence items."""
+        symptoms = ["chest pain", "palpitations", "dizziness", "tingling", "numbness"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" in conditions
+        panic = next(h for h in hints if h["condition"] == "Panic disorder")
+        assert panic["snomed_code"] == "371631005"
+        assert set(panic["evidence"]) == set(symptoms)
+
+    def test_fires_with_three_of_five(self):
+        """min_required=3: any 3 of the 5 symptoms should trigger."""
+        combos = [
+            ["chest pain", "palpitations", "dizziness"],
+            ["palpitations", "tingling", "numbness"],
+            ["chest pain", "dizziness", "numbness"],
+        ]
+        for combo in combos:
+            hints = generate_diagnostic_hints(combo)
+            conditions = [h["condition"] for h in hints]
+            assert "Panic disorder" in conditions, f"Should fire for {combo}"
+
+    def test_does_not_fire_with_two(self):
+        """Only 2 of 5 should not trigger."""
+        symptoms = ["chest pain", "palpitations"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" not in conditions
+
+    def test_does_not_fire_with_one(self):
+        symptoms = ["dizziness"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" not in conditions
+
+    def test_ranks_above_gad_on_psychiatric_case(self):
+        """With full psychiatric case symptoms, Panic (5 evidence) > GAD (3)."""
+        symptoms = [
+            "chest pain", "palpitations", "dizziness",
+            "tingling", "numbness", "anxiety", "insomnia",
+        ]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" in conditions
+        assert "Generalised anxiety disorder" in conditions
+        panic_idx = conditions.index("Panic disorder")
+        gad_idx = conditions.index("Generalised anxiety disorder")
+        assert panic_idx < gad_idx
+
+    def test_gad_still_fires_independently(self):
+        """GAD should still fire when its symptoms are present."""
+        symptoms = ["anxiety", "palpitations", "insomnia"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Generalised anxiety disorder" in conditions
+        assert "Panic disorder" not in conditions
+
+    def test_negation_blocks(self):
+        symptoms = ["chest pain", "palpitations", "dizziness", "tingling", "numbness"]
+        negations = ["No dizziness", "No tingling", "No numbness"]
+        hints = generate_diagnostic_hints(symptoms, negations)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" not in conditions
+
+    def test_case_insensitive(self):
+        symptoms = ["Chest Pain", "Palpitations", "Dizziness"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Panic disorder" in conditions
+
+
 # ── negation suppression ─────────────────────────────────────────────
 
 

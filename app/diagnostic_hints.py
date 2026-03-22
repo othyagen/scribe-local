@@ -101,6 +101,12 @@ RULES: list[dict] = [
         "snomed": "399153001",
     },
     {
+        "symptoms": ["chest pain", "palpitations", "dizziness", "tingling", "numbness"],
+        "condition": "Panic disorder",
+        "snomed": "371631005",
+        "min_required": 3,
+    },
+    {
         "symptoms": ["anxiety", "palpitations", "insomnia"],
         "condition": "Generalised anxiety disorder",
         "snomed": "21897009",

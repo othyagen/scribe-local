@@ -54,6 +54,18 @@ RULES: list[dict] = [
         },
     },
     {
+        "symptoms": ["chest pain"],
+        "condition": "Gastroesophageal reflux",
+        "snomed": "235595009",
+        "qualifiers": {
+            "chest pain": {
+                "character": ["burning"],
+                "aggravating_factors": ["eating"],
+                "relieving_factors": ["antacids"],
+            },
+        },
+    },
+    {
         "symptoms": ["chest pain", "dyspnea"],
         "condition": "Acute coronary syndrome",
         "snomed": "394659003",

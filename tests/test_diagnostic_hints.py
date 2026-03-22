@@ -388,6 +388,121 @@ class TestCostochondritisRule:
         assert "Costochondritis" in conditions
 
 
+# ── gastroesophageal reflux rule ──────────────────────────────────────
+
+
+def _gerd_qualifiers():
+    """Qualifier list matching the GERD pattern."""
+    return [
+        {
+            "symptom": "chest pain",
+            "qualifiers": {
+                "character": "burning",
+                "aggravating_factors": ["eating"],
+                "relieving_factors": ["antacids"],
+            },
+        },
+    ]
+
+
+class TestGastroesophagealRefluxRule:
+    def test_fires_with_full_qualifier_match(self):
+        hints = generate_diagnostic_hints(
+            ["chest pain"], qualifiers=_gerd_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" in conditions
+        gerd = next(h for h in hints if h["condition"] == "Gastroesophageal reflux")
+        assert gerd["snomed_code"] == "235595009"
+        assert gerd["evidence"] == ["chest pain"]
+
+    def test_does_not_fire_without_qualifiers(self):
+        hints = generate_diagnostic_hints(["chest pain"])
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_does_not_fire_wrong_character(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "sharp",
+                    "aggravating_factors": ["eating"],
+                    "relieving_factors": ["antacids"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_does_not_fire_missing_aggravating(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "burning",
+                    "aggravating_factors": [],
+                    "relieving_factors": ["antacids"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_does_not_fire_missing_relieving(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "burning",
+                    "aggravating_factors": ["eating"],
+                    "relieving_factors": [],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_does_not_fire_without_chest_pain_symptom(self):
+        hints = generate_diagnostic_hints(
+            ["nausea"], qualifiers=_gerd_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_no_overlap_with_pericarditis(self):
+        hints = generate_diagnostic_hints(
+            ["chest pain"], qualifiers=_pericarditis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_no_overlap_with_costochondritis(self):
+        hints = generate_diagnostic_hints(
+            ["chest pain"], qualifiers=_costochondritis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" not in conditions
+
+    def test_case_insensitive(self):
+        quals = [
+            {
+                "symptom": "Chest Pain",
+                "qualifiers": {
+                    "character": "Burning",
+                    "aggravating_factors": ["Eating"],
+                    "relieving_factors": ["Antacids"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Gastroesophageal reflux" in conditions
+
+
 # ── negation suppression ─────────────────────────────────────────────
 
 

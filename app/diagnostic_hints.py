@@ -26,6 +26,11 @@ RULES: list[dict] = [
         "snomed": "7180009",
     },
     {
+        "symptoms": ["chest pain", "dyspnea", "swelling"],
+        "condition": "Pulmonary embolism",
+        "snomed": "59282003",
+    },
+    {
         "symptoms": ["chest pain", "dyspnea"],
         "condition": "Acute coronary syndrome",
         "snomed": "394659003",

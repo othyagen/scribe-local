@@ -112,6 +112,64 @@ class TestRuleMatching:
             assert len(hints[i]["evidence"]) >= len(hints[i + 1]["evidence"])
 
 
+# ── pulmonary embolism rule ───────────────────────────────────────────
+
+
+class TestPulmonaryEmbolismRule:
+    def test_pe_fires_with_triad(self):
+        symptoms = ["chest pain", "dyspnea", "swelling"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" in conditions
+        pe = next(h for h in hints if h["condition"] == "Pulmonary embolism")
+        assert pe["snomed_code"] == "59282003"
+        assert set(pe["evidence"]) == {"chest pain", "dyspnea", "swelling"}
+
+    def test_pe_does_not_fire_without_swelling(self):
+        symptoms = ["chest pain", "dyspnea"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" not in conditions
+        assert "Acute coronary syndrome" in conditions
+
+    def test_pe_does_not_fire_without_dyspnea(self):
+        symptoms = ["chest pain", "swelling"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" not in conditions
+
+    def test_pe_does_not_fire_without_chest_pain(self):
+        symptoms = ["dyspnea", "swelling"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" not in conditions
+
+    def test_pe_ranks_above_acs_by_evidence_count(self):
+        """PE (3 evidence) should sort before ACS (2 evidence)."""
+        symptoms = ["chest pain", "dyspnea", "swelling"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" in conditions
+        assert "Acute coronary syndrome" in conditions
+        pe_idx = conditions.index("Pulmonary embolism")
+        acs_idx = conditions.index("Acute coronary syndrome")
+        assert pe_idx < acs_idx
+
+    def test_pe_negated_swelling_blocks(self):
+        symptoms = ["chest pain", "dyspnea", "swelling"]
+        negations = ["No swelling"]
+        hints = generate_diagnostic_hints(symptoms, negations)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" not in conditions
+        assert "Acute coronary syndrome" in conditions
+
+    def test_pe_case_insensitive(self):
+        symptoms = ["Chest Pain", "Dyspnea", "Swelling"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pulmonary embolism" in conditions
+
+
 # ── negation suppression ─────────────────────────────────────────────
 
 

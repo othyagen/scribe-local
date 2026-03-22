@@ -100,11 +100,11 @@ def build_clinical_state(
         segments, confidence_entries=confidence_entries,
     )
 
-    diagnostic_hints = generate_diagnostic_hints(symptoms, negations)
-
     history = extract_history_context(segments)
 
     qualifiers = extract_qualifiers(segments, extracted_findings=symptoms)
+
+    diagnostic_hints = generate_diagnostic_hints(symptoms, negations, qualifiers)
 
     state = {
         "symptoms": symptoms,

@@ -31,6 +31,18 @@ RULES: list[dict] = [
         "snomed": "59282003",
     },
     {
+        "symptoms": ["chest pain"],
+        "condition": "Pericarditis",
+        "snomed": "3238004",
+        "qualifiers": {
+            "chest pain": {
+                "character": ["sharp"],
+                "aggravating_factors": ["deep breathing"],
+                "relieving_factors": ["leaning forward"],
+            },
+        },
+    },
+    {
         "symptoms": ["chest pain", "dyspnea"],
         "condition": "Acute coronary syndrome",
         "snomed": "394659003",
@@ -104,12 +116,15 @@ def _extract_negated_symptoms(negations: list[str]) -> set[str]:
 def generate_diagnostic_hints(
     symptoms: list[str],
     negations: list[str] | None = None,
+    qualifiers: list[dict] | None = None,
 ) -> list[dict]:
     """Generate diagnostic hints from symptom and negation lists.
 
     Args:
         symptoms: list of symptom strings (e.g. from extract_symptoms)
         negations: optional list of negation strings (e.g. from extract_negations)
+        qualifiers: optional list of qualifier dicts from
+            :func:`app.qualifier_extraction.extract_qualifiers`.
 
     Returns:
         list of dicts with ``condition``, ``snomed_code``, ``evidence``.
@@ -124,19 +139,67 @@ def generate_diagnostic_hints(
     # Remove negated symptoms from the active set
     active_symptoms = symptom_set - negated
 
+    # Index qualifiers by symptom name for fast lookup.
+    qual_index: dict[str, dict] = {}
+    for q in qualifiers or []:
+        key = q.get("symptom", "").lower()
+        if key:
+            qual_index[key] = q.get("qualifiers", {})
+
     results: list[dict] = []
     for rule in RULES:
         required = {s.lower() for s in rule["symptoms"]}
         matched = required & active_symptoms
         min_req = rule.get("min_required", len(required))
-        if len(matched) >= min_req:
-            evidence = sorted(matched)
-            results.append({
-                "condition": rule["condition"],
-                "snomed_code": rule["snomed"],
-                "evidence": evidence,
-            })
+        if len(matched) < min_req:
+            continue
+
+        # Check qualifier constraints if the rule defines them.
+        rule_quals = rule.get("qualifiers")
+        if rule_quals and not _check_qualifiers(rule_quals, qual_index):
+            continue
+
+        evidence = sorted(matched)
+        results.append({
+            "condition": rule["condition"],
+            "snomed_code": rule["snomed"],
+            "evidence": evidence,
+        })
 
     # Sort: most evidence first, then alphabetical by condition name
     results.sort(key=lambda r: (-len(r["evidence"]), r["condition"]))
     return results
+
+
+def _check_qualifiers(
+    rule_quals: dict[str, dict],
+    qual_index: dict[str, dict],
+) -> bool:
+    """Check whether extracted qualifiers satisfy rule constraints.
+
+    Each key in *rule_quals* is a symptom name.  Its value is a dict
+    mapping qualifier fields (e.g. ``"character"``, ``"aggravating_factors"``)
+    to lists of acceptable values.
+
+    For scalar fields (e.g. ``character``), the extracted value must be
+    in the acceptable list.  For list fields (e.g. ``aggravating_factors``),
+    at least one extracted value must be in the acceptable list.
+
+    All qualifier constraints must be satisfied (AND logic).
+    """
+    for symptom, constraints in rule_quals.items():
+        actual = qual_index.get(symptom.lower())
+        if not actual:
+            return False
+        for field, acceptable in constraints.items():
+            acceptable_lower = {v.lower() for v in acceptable}
+            value = actual.get(field)
+            if value is None:
+                return False
+            if isinstance(value, list):
+                if not any(v.lower() in acceptable_lower for v in value):
+                    return False
+            else:
+                if value.lower() not in acceptable_lower:
+                    return False
+    return True

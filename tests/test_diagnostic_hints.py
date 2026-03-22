@@ -170,6 +170,118 @@ class TestPulmonaryEmbolismRule:
         assert "Pulmonary embolism" in conditions
 
 
+# ── pericarditis rule ─────────────────────────────────────────────────
+
+
+def _pericarditis_qualifiers():
+    """Qualifier list matching the pericarditis pattern."""
+    return [
+        {
+            "symptom": "chest pain",
+            "qualifiers": {
+                "character": "sharp",
+                "aggravating_factors": ["deep breathing"],
+                "relieving_factors": ["leaning forward"],
+            },
+        },
+    ]
+
+
+class TestPericarditisRule:
+    def test_fires_with_full_qualifier_match(self):
+        symptoms = ["chest pain"]
+        hints = generate_diagnostic_hints(
+            symptoms, qualifiers=_pericarditis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" in conditions
+        peri = next(h for h in hints if h["condition"] == "Pericarditis")
+        assert peri["snomed_code"] == "3238004"
+        assert peri["evidence"] == ["chest pain"]
+
+    def test_does_not_fire_without_qualifiers(self):
+        symptoms = ["chest pain"]
+        hints = generate_diagnostic_hints(symptoms)
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" not in conditions
+
+    def test_does_not_fire_wrong_character(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "pressure-like",
+                    "aggravating_factors": ["deep breathing"],
+                    "relieving_factors": ["leaning forward"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" not in conditions
+
+    def test_does_not_fire_missing_aggravating(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "sharp",
+                    "aggravating_factors": [],
+                    "relieving_factors": ["leaning forward"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" not in conditions
+
+    def test_does_not_fire_missing_relieving(self):
+        quals = [
+            {
+                "symptom": "chest pain",
+                "qualifiers": {
+                    "character": "sharp",
+                    "aggravating_factors": ["deep breathing"],
+                    "relieving_factors": [],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" not in conditions
+
+    def test_does_not_fire_without_chest_pain_symptom(self):
+        hints = generate_diagnostic_hints(
+            ["pain"], qualifiers=_pericarditis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" not in conditions
+
+    def test_case_insensitive_qualifiers(self):
+        quals = [
+            {
+                "symptom": "Chest Pain",
+                "qualifiers": {
+                    "character": "Sharp",
+                    "aggravating_factors": ["Deep Breathing"],
+                    "relieving_factors": ["Leaning Forward"],
+                },
+            },
+        ]
+        hints = generate_diagnostic_hints(["chest pain"], qualifiers=quals)
+        conditions = [h["condition"] for h in hints]
+        assert "Pericarditis" in conditions
+
+    def test_existing_rules_unaffected_by_qualifiers_param(self):
+        """Passing qualifiers does not break rules without qualifier constraints."""
+        symptoms = ["chest pain", "dyspnea"]
+        hints = generate_diagnostic_hints(
+            symptoms, qualifiers=_pericarditis_qualifiers(),
+        )
+        conditions = [h["condition"] for h in hints]
+        assert "Acute coronary syndrome" in conditions
+
+
 # ── negation suppression ─────────────────────────────────────────────
 
 
